@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#101312" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="/style.css" />
+    <title>Session Voice</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div>
+          <p class="eyebrow">OPENCODE · LIVE CONTROL</p>
+          <h1>Session Voice</h1>
+        </div>
+        <div class="controls">
+          <span id="user"></span>
+          <form method="post" action="/auth/logout">
+            <button class="quiet">Log out</button>
+          </form>
+          <button id="refresh" class="quiet">↻ Refresh</button>
+        </div>
+      </header>
+      <section class="panel goals-panel">
+        <div class="section-head">
+          <h2>Executive goals</h2>
+          <span id="goalNotice" aria-live="polite"></span>
+        </div>
+        <button id="applyPlan" class="quiet" type="button">
+          Send plan to all root sessions
+        </button>
+        <form id="goalForm" class="goal-form">
+          <label for="goalTitle">Goal</label>
+          <input
+            id="goalTitle"
+            maxlength="200"
+            required
+            placeholder="A few outcomes that matter across projects"
+          />
+          <label for="goalDescription">Context / success criteria</label>
+          <textarea
+            id="goalDescription"
+            rows="2"
+            maxlength="4000"
+            placeholder="What should all related sessions optimize for?"
+          ></textarea>
+          <button type="submit">Add goal</button>
+        </form>
+        <div id="goals" class="goal-list"></div>
+      </section>
+      <div class="layout">
+        <section class="panel sessions">
+          <div class="section-head">
+            <h2>Root sessions</h2>
+            <span id="updated">Connecting…</span>
+          </div>
+          <div id="list" class="session-list"></div>
+        </section>
+        <section class="panel detail">
+          <div id="empty" class="empty">
+            <span class="orb">◉</span>
+            <h2>Select a session</h2>
+            <p>
+              Choose a root session to inspect activity and send instructions.
+            </p>
+          </div>
+          <div id="selected" hidden>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">SELECTED SESSION</p>
+                <h2 id="title"></h2>
+              </div>
+              <span id="status" class="status"></span>
+            </div>
+            <p id="meta" class="meta"></p>
+            <div class="activity">
+              <span class="eyebrow">LATEST MESSAGE</span>
+              <p id="latest">No messages yet.</p>
+            </div>
+            <button id="sendPlan" class="quiet" type="button">
+              Send/update plan in this session
+            </button>
+            <label class="read-aloud"
+              ><input type="checkbox" id="readAloud" /> Read latest assistant
+              reply aloud</label
+            >
+            <audio id="player" controls hidden></audio>
+            <form id="composer">
+              <label for="prompt">Instruction</label
+              ><textarea
+                id="prompt"
+                rows="4"
+                placeholder="Type or dictate an instruction…"
+              ></textarea>
+              <div class="controls">
+                <button type="button" id="voice" class="quiet">
+                  🎙 Start voice</button
+                ><span id="voiceState" aria-live="polite"></span
+                ><button type="submit" id="send">Send instruction ↑</button>
+              </div>
+            </form>
+            <p class="privacy">
+              Voice is transcribed in your browser. Audio is not recorded or
+              uploaded.
+            </p>
+          </div>
+        </section>
+      </div>
+      <footer>
+        Polling every 5 seconds · Browser speech recognition requires a
+        supported browser and microphone permission.
+      </footer>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

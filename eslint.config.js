@@ -1,0 +1,48 @@
+export default [
+  {
+    ignores: ["node_modules/**"],
+  },
+  {
+    files: ["**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        process: "readonly",
+        Buffer: "readonly",
+        URL: "readonly",
+        URLSearchParams: "readonly",
+        fetch: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        console: "readonly",
+        document: "readonly",
+        window: "readonly",
+        navigator: "readonly",
+        SpeechRecognition: "readonly",
+        webkitSpeechRecognition: "readonly",
+        Intl: "readonly",
+        Date: "readonly",
+        JSON: "readonly",
+        Error: "readonly",
+        Promise: "readonly",
+        Math: "readonly",
+        setTimeout: "readonly",
+        self: "readonly",
+        caches: "readonly",
+        fetch: "readonly",
+        Request: "readonly",
+        Response: "readonly",
+        URL: "readonly",
+      },
+    },
+    rules: {
+      "no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+      "no-constant-condition": "error",
+      curly: ["error", "all"],
+    },
+  },
+];

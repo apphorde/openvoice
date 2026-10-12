@@ -1,0 +1,287 @@
+:root {
+  color-scheme: dark;
+  --bg: #101312;
+  --panel: #171b19;
+  --line: #29312d;
+  --muted: #8c9991;
+  --mint: #b5f36b;
+  --white: #edf2ed;
+}
+* {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+body {
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 20% 0, #1b2920 0, transparent 38%), var(--bg);
+  color: var(--white);
+  font:
+    15px Manrope,
+    system-ui,
+    sans-serif;
+}
+.shell {
+  max-width: 1100px;
+  margin: auto;
+  padding: 42px 28px;
+}
+header,
+.section-head,
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+header {
+  margin-bottom: 30px;
+}
+h1 {
+  font-size: clamp(28px, 5vw, 42px);
+  letter-spacing: -1.8px;
+  margin: 4px 0;
+}
+h2 {
+  font-size: 17px;
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+.eyebrow {
+  font:
+    10px "DM Mono",
+    monospace;
+  letter-spacing: 1.6px;
+  color: var(--mint);
+  margin: 0 0 7px;
+}
+.panel {
+  background: #171b19ef;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.3fr);
+  gap: 16px;
+}
+.section-head {
+  margin-bottom: 18px;
+}
+.section-head > span,
+.meta,
+.privacy,
+footer {
+  color: var(--muted);
+  font-size: 12px;
+}
+.session-list {
+  display: grid;
+  gap: 8px;
+}
+.session-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #202622;
+  padding: 13px;
+  color: inherit;
+  cursor: pointer;
+}
+.session-card:hover,
+.session-card.active {
+  border-color: #83bb4e;
+  background: #252f27;
+}
+.session-card strong {
+  display: block;
+  margin-bottom: 7px;
+}
+.session-card small {
+  color: var(--muted);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-bottom {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 11px;
+  font:
+    10px "DM Mono",
+    monospace;
+  color: #a8b1ab;
+}
+.status {
+  color: var(--mint);
+  font:
+    11px "DM Mono",
+    monospace;
+}
+.empty {
+  min-height: 350px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  color: var(--muted);
+}
+.empty h2 {
+  color: var(--white);
+  margin: 13px;
+}
+.orb {
+  font-size: 40px;
+  color: var(--mint);
+}
+.activity {
+  padding: 19px;
+  background: #101512;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  margin: 23px 0;
+}
+.activity p {
+  line-height: 1.6;
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+}
+label {
+  display: block;
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+  background: #101512;
+  border: 1px solid #38443c;
+  border-radius: 8px;
+  color: var(--white);
+  padding: 13px;
+  font:
+    14px Manrope,
+    sans-serif;
+  outline: none;
+}
+input:not([type="checkbox"]) {
+  width: 100%;
+  background: #101512;
+  border: 1px solid #38443c;
+  border-radius: 8px;
+  color: var(--white);
+  padding: 11px;
+  margin-bottom: 10px;
+}
+.goals-panel {
+  margin-bottom: 16px;
+}
+.goal-form {
+  display: grid;
+  gap: 6px;
+  max-width: 720px;
+}
+.goal-form button {
+  justify-self: start;
+  background: var(--mint);
+  color: #13200d;
+}
+.goal-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.goal-card {
+  background: #202622;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+.goal-card p {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.read-aloud {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+textarea:focus {
+  border-color: var(--mint);
+}
+button {
+  font:
+    600 12px Manrope,
+    sans-serif;
+  border: 0;
+  border-radius: 7px;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+.quiet {
+  background: #28322c;
+  color: var(--white);
+}
+#send {
+  background: var(--mint);
+  color: #13200d;
+}
+.controls {
+  margin-top: 11px;
+}
+.controls span {
+  font-size: 11px;
+  color: var(--mint);
+  margin-right: auto;
+}
+.privacy {
+  margin: 12px 0;
+}
+a {
+  font-size: 12px;
+  color: var(--mint);
+}
+footer {
+  margin-top: 19px;
+  font:
+    10px "DM Mono",
+    monospace;
+}
+#updated {
+  font:
+    10px "DM Mono",
+    monospace;
+}
+@media (max-width: 720px) {
+  .shell {
+    padding: 25px 15px;
+  }
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .sessions {
+    max-height: 40vh;
+    overflow: auto;
+  }
+  .empty {
+    min-height: 180px;
+  }
+  .panel {
+    padding: 17px;
+  }
+  .controls {
+    flex-wrap: wrap;
+  }
+  .controls span {
+    min-width: 100%;
+    order: 2;
+  }
+}
