@@ -1,19 +1,9 @@
 import http from "node:http";
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
-import {
-  randomBytes,
-  createHash,
-  createPublicKey,
-  verify as verifySignature,
-} from "node:crypto";
+import { randomBytes, createHash, createPublicKey, verify as verifySignature } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import {
-  rootSessions,
-  latestExcerpt,
-  messageText,
-  messageRole,
-} from "./src/utils.js";
+import { rootSessions, latestExcerpt, messageText, messageRole } from "./src/utils.js";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
 const host = process.env.HOST || "127.0.0.1";
@@ -22,31 +12,17 @@ const loopback = ["127.0.0.1", "::1", "localhost"].includes(host);
 const issuer = (process.env.OIDC_ISSUER || "").replace(/\/$/, "");
 const clientId = process.env.OIDC_CLIENT_ID;
 const clientSecret = process.env.OIDC_CLIENT_SECRET;
-const appUrl = (process.env.APP_URL || `http://127.0.0.1:${port}`).replace(
-  /\/$/,
-  "",
-);
-if (
-  !loopback &&
-  (!issuer || !clientId || !clientSecret || !appUrl.startsWith("https://"))
-) {
-  throw new Error(
-    "External binding requires OIDC credentials and an HTTPS APP_URL",
-  );
+const appUrl = (process.env.APP_URL || `http://127.0.0.1:${port}`).replace(/\/$/, "");
+if (!loopback && (!issuer || !clientId || !clientSecret || !appUrl.startsWith("https://"))) {
+  throw new Error("External binding requires OIDC credentials and an HTTPS APP_URL");
 }
 const authEnabled = Boolean(issuer && clientId && clientSecret);
-const opencode = (process.env.OPENCODE_URL || "http://127.0.0.1:4096").replace(
-  /\/$/,
-  "",
-);
-const password =
-  process.env.OPENCODE_SERVER_PASSWORD || process.env.OPENCODE_PASSWORD;
+const opencode = (process.env.OPENCODE_URL || "http://127.0.0.1:4096").replace(/\/$/, "");
+const password = process.env.OPENCODE_SERVER_PASSWORD || process.env.OPENCODE_PASSWORD;
 const remoteAuth = password
   ? `Basic ${Buffer.from(`${process.env.OPENCODE_SERVER_USERNAME || "opencode"}:${password}`).toString("base64")}`
   : "";
-const dataFile = resolve(
-  process.env.DATA_FILE || resolve(dir, "data/goals.json"),
-);
+const dataFile = resolve(process.env.DATA_FILE || resolve(dir, "data/goals.json"));
 const identities = new Map();
 const rootIds = new Set();
 const authFlows = new Map();
@@ -162,13 +138,8 @@ async function loadIdentity(token) {
   }
   if (
     claims.iss !== issuer ||
-    !(
-      claims.aud === clientId ||
-      (Array.isArray(claims.aud) && claims.aud.includes(clientId))
-    ) ||
-    (Array.isArray(claims.aud) &&
-      claims.aud.length > 1 &&
-      claims.azp !== clientId) ||
+    !(claims.aud === clientId || (Array.isArray(claims.aud) && claims.aud.includes(clientId))) ||
+    (Array.isArray(claims.aud) && claims.aud.length > 1 && claims.azp !== clientId) ||
     claims.exp <= Date.now() / 1000 ||
     !claims.sub
   ) {
@@ -199,9 +170,9 @@ async function refresh() {
     const active = await api("/session/active").catch(() => ({ data: {} }));
     const result = await Promise.all(
       roots.map(async (s) => {
-        const messages = await api(
-          `/session/${encodeURIComponent(s.id)}/message?limit=1&order=desc`,
-        ).catch(() => ({ data: [] }));
+        const messages = await api(`/session/${encodeURIComponent(s.id)}/message?limit=1&order=desc`).catch(() => ({
+          data: [],
+        }));
         const last = (messages.data || messages).at(0);
         return {
           id: s.id,
@@ -243,10 +214,7 @@ async function initOidc() {
     throw new Error("OIDC discovery failed");
   }
   discovery = await r.json();
-  if (
-    discovery.issuer !== issuer ||
-    !discovery.code_challenge_methods_supported?.includes("S256")
-  ) {
+  if (discovery.issuer !== issuer || !discovery.code_challenge_methods_supported?.includes("S256")) {
     throw new Error("Unsupported OIDC provider configuration");
   }
   const keys = await fetch(discovery.jwks_uri, {
@@ -298,9 +266,7 @@ const server = http.createServer(async (req, res) => {
         scope: "openid profile email",
         state,
         nonce,
-        code_challenge: createHash("sha256")
-          .update(verifier)
-          .digest("base64url"),
+        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
         code_challenge_method: "S256",
       }).forEach(([k, v]) => target.searchParams.set(k, v));
       res.writeHead(302, {
@@ -312,12 +278,7 @@ const server = http.createServer(async (req, res) => {
     if (path === "/auth/callback" && req.method === "GET") {
       const flow = authFlows.get(url.searchParams.get("state"));
       authFlows.delete(url.searchParams.get("state"));
-      if (
-        !flow ||
-        Date.now() - flow.at > 300000 ||
-        url.searchParams.has("error") ||
-        !url.searchParams.get("code")
-      ) {
+      if (!flow || Date.now() - flow.at > 300000 || url.searchParams.has("error") || !url.searchParams.get("code")) {
         return json(res, 400, { error: "Invalid OIDC callback" });
       }
       const response = await fetch(discovery.token_endpoint, {
@@ -338,9 +299,7 @@ const server = http.createServer(async (req, res) => {
       }
       const result = await response.json(),
         identity = await loadIdentity(result.id_token);
-      const claims = JSON.parse(
-        Buffer.from(result.id_token.split(".")[1], "base64url"),
-      );
+      const claims = JSON.parse(Buffer.from(result.id_token.split(".")[1], "base64url"));
       if (claims.nonce !== flow.nonce) {
         return json(res, 401, { error: "OIDC nonce mismatch" });
       }
@@ -372,12 +331,7 @@ const server = http.createServer(async (req, res) => {
     if (!authEnabled && !loopback) {
       return json(res, 503, { error: "OIDC is required for network access" });
     }
-    if (
-      req.method === "POST" ||
-      req.method === "PUT" ||
-      req.method === "PATCH" ||
-      req.method === "DELETE"
-    ) {
+    if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE") {
       const origin = req.headers.origin;
       if (!origin || new URL(origin).origin !== appUrl) {
         return json(res, 403, { error: "Invalid origin" });
@@ -397,30 +351,18 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 200, snapshot);
     }
-    const conversationMatch = path.match(
-      /^\/api\/sessions\/([^/]+)\/messages$/,
-    );
+    const conversationMatch = path.match(/^\/api\/sessions\/([^/]+)\/messages$/);
     if (req.method === "GET" && conversationMatch) {
       const id = decodeURIComponent(conversationMatch[1]);
       if (!rootIds.has(id)) {
         return json(res, 404, { error: "Root session not found" });
       }
       const requestedLimit = Number(url.searchParams.get("limit") || 30);
-      const limit = Number.isInteger(requestedLimit)
-        ? Math.max(1, Math.min(50, requestedLimit))
-        : 30;
-      const response = await api(
-        `/session/${encodeURIComponent(id)}/message?limit=${limit}&order=desc`,
-      );
-      const entries = Array.isArray(response)
-        ? response
-        : Array.isArray(response.data)
-          ? response.data
-          : [];
+      const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(50, requestedLimit)) : 30;
+      const response = await api(`/session/${encodeURIComponent(id)}/message?limit=${limit}&order=desc`);
+      const entries = Array.isArray(response) ? response : Array.isArray(response.data) ? response.data : [];
       const messages = entries
-        .filter((message) =>
-          ["user", "assistant"].includes(messageRole(message)),
-        )
+        .filter((message) => ["user", "assistant"].includes(messageRole(message)))
         .map((message) => ({
           id: message.id || message.info?.id,
           role: messageRole(message),
@@ -428,14 +370,9 @@ const server = http.createServer(async (req, res) => {
           time: message.time?.created || message.info?.time?.created,
           completed:
             messageRole(message) === "assistant"
-              ? typeof (
-                  message.time?.completed ?? message.info?.time?.completed
-                ) === "number"
+              ? typeof (message.time?.completed ?? message.info?.time?.completed) === "number"
               : undefined,
-          finish:
-            messageRole(message) === "assistant"
-              ? message.finish || message.info?.finish
-              : undefined,
+          finish: messageRole(message) === "assistant" ? message.finish || message.info?.finish : undefined,
         }))
         .filter((message) => message.text);
       return json(res, 200, { messages: messages.reverse() });
@@ -451,11 +388,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && path === "/api/goals") {
       const input = await body(req);
-      if (
-        typeof input.title !== "string" ||
-        !input.title.trim() ||
-        input.title.length > 200
-      ) {
+      if (typeof input.title !== "string" || !input.title.trim() || input.title.length > 200) {
         return json(res, 400, {
           error: "Title is required (max 200 characters)",
         });
@@ -464,10 +397,7 @@ const server = http.createServer(async (req, res) => {
         goal = {
           id: randomBytes(16).toString("hex"),
           title: input.title.trim(),
-          description:
-            typeof input.description === "string"
-              ? input.description.slice(0, 4000)
-              : "",
+          description: typeof input.description === "string" ? input.description.slice(0, 4000) : "",
           status: "open",
           createdAt: new Date().toISOString(),
         };
@@ -481,27 +411,20 @@ const server = http.createServer(async (req, res) => {
         !Array.isArray(input.sessionIds) ||
         input.sessionIds.length === 0 ||
         input.sessionIds.length > 250 ||
-        input.sessionIds.some(
-          (id) => typeof id !== "string" || !rootIds.has(id),
-        )
+        input.sessionIds.some((id) => typeof id !== "string" || !rootIds.has(id))
       ) {
         return json(res, 400, {
           error: "Select 1–250 discovered root sessions",
         });
       }
-      const goals = (await readGoals()).filter(
-        (goal) => goal.status !== "done",
-      );
+      const goals = (await readGoals()).filter((goal) => goal.status !== "done");
       if (goals.length === 0) {
         return json(res, 400, {
           error: "Add an open goal before sending the plan",
         });
       }
       const plan = goals
-        .map(
-          (goal, index) =>
-            `${index + 1}. ${goal.title}${goal.description ? `\n   ${goal.description}` : ""}`,
-        )
+        .map((goal, index) => `${index + 1}. ${goal.title}${goal.description ? `\n   ${goal.description}` : ""}`)
         .join("\n");
       let next = 0;
       let sent = 0;
@@ -522,9 +445,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
       };
-      await Promise.all(
-        Array.from({ length: Math.min(5, input.sessionIds.length) }, worker),
-      );
+      await Promise.all(Array.from({ length: Math.min(5, input.sessionIds.length) }, worker));
       return json(res, failed ? 207 : 202, { sent, failed });
     }
     const goalMatch = path.match(/^\/api\/goals\/([a-f0-9]{32})$/);
@@ -535,10 +456,7 @@ const server = http.createServer(async (req, res) => {
       if (!goal) {
         return json(res, 404, { error: "Goal not found" });
       }
-      if (
-        input.status !== undefined &&
-        !["open", "in-progress", "done"].includes(input.status)
-      ) {
+      if (input.status !== undefined && !["open", "in-progress", "done"].includes(input.status)) {
         return json(res, 400, { error: "Invalid status" });
       }
       if (input.status) {
@@ -572,10 +490,7 @@ const server = http.createServer(async (req, res) => {
       if (!goal) {
         return json(res, 404, { error: "Goal not found" });
       }
-      if (
-        typeof input.sessionId !== "string" ||
-        !rootIds.has(input.sessionId)
-      ) {
+      if (typeof input.sessionId !== "string" || !rootIds.has(input.sessionId)) {
         return json(res, 400, {
           error: "A discovered root session is required",
         });
@@ -597,11 +512,7 @@ const server = http.createServer(async (req, res) => {
           error: "Only discovered root sessions can receive prompts",
         });
       }
-      if (
-        typeof input.text !== "string" ||
-        !input.text.trim() ||
-        input.text.length > 16000
-      ) {
+      if (typeof input.text !== "string" || !input.text.trim() || input.text.length > 16000) {
         return json(res, 400, {
           error: "Text is required (max 16000 characters)",
         });
@@ -620,11 +531,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 503, { error: "TTS is not configured" });
       }
       const input = await body(req, 5000);
-      if (
-        typeof input.text !== "string" ||
-        !input.text.trim() ||
-        input.text.length > 1000
-      ) {
+      if (typeof input.text !== "string" || !input.text.trim() || input.text.length > 1000) {
         return json(res, 400, {
           error: "Text is required (max 1000 characters)",
         });
@@ -652,23 +559,19 @@ const server = http.createServer(async (req, res) => {
       usage.inFlight += 1;
       ttsLimits.set(key, usage);
       try {
-        const out = await fetch(
-          process.env.OPENAI_TTS_URL ||
-            "https://api.openai.com/v1/audio/speech",
-          {
-            method: "POST",
-            signal: AbortSignal.timeout(20000),
-            headers: {
-              Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: process.env.TTS_MODEL || "tts-1",
-              voice: process.env.TTS_VOICE || "alloy",
-              input: input.text,
-            }),
+        const out = await fetch(process.env.OPENAI_TTS_URL || "https://api.openai.com/v1/audio/speech", {
+          method: "POST",
+          signal: AbortSignal.timeout(20000),
+          headers: {
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            model: process.env.TTS_MODEL || "tts-1",
+            voice: process.env.TTS_VOICE || "alloy",
+            input: input.text,
+          }),
+        });
         if (!out.ok) {
           return json(res, 502, { error: "TTS provider failed" });
         }
@@ -683,8 +586,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (req.method === "GET") {
-      const relative =
-        path === "/" ? "index.html" : decodeURIComponent(path.slice(1));
+      const relative = path === "/" ? "index.html" : decodeURIComponent(path.slice(1));
       const root = resolve(dir, "public"),
         file = resolve(root, relative);
       if (file !== root && !file.startsWith(root + sep)) {
@@ -723,7 +625,4 @@ const server = http.createServer(async (req, res) => {
 await initOidc();
 server.listen(port, host);
 refresh();
-setInterval(
-  refresh,
-  Math.max(2000, Number(process.env.POLL_INTERVAL_MS || 5000)),
-).unref();
+setInterval(refresh, Math.max(2000, Number(process.env.POLL_INTERVAL_MS || 5000))).unref();

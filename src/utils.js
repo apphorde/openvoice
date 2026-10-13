@@ -1,27 +1,15 @@
 export function rootSessions(sessions) {
-  const entries = Array.isArray(sessions)
-    ? sessions
-    : Array.isArray(sessions?.data)
-      ? sessions.data
-      : [];
+  const entries = Array.isArray(sessions) ? sessions : Array.isArray(sessions?.data) ? sessions.data : [];
   return entries
     .filter((session) => !session.parentID)
-    .sort(
-      (a, b) =>
-        (b.time?.updated || b.time?.created || 0) -
-        (a.time?.updated || a.time?.created || 0),
-    );
+    .sort((a, b) => (b.time?.updated || b.time?.created || 0) - (a.time?.updated || a.time?.created || 0));
 }
 export function messageText(message) {
   if (!message) {
     return "";
   }
   const text = (message.content || message.parts || [])
-    .filter(
-      (part) =>
-        (part.type === "text" || part.type === "text-delta") &&
-        typeof part.text === "string",
-    )
+    .filter((part) => (part.type === "text" || part.type === "text-delta") && typeof part.text === "string")
     .map((part) => part.text)
     .concat(typeof message.text === "string" ? [message.text] : [])
     .join("\n")

@@ -120,9 +120,7 @@ test("server polls sessions, filters children, and proxies message send", async 
       const started = Date.now();
       const attempt = async () => {
         try {
-          const response = await fetch(
-            `http://127.0.0.1:${unused}/api/sessions`,
-          );
+          const response = await fetch(`http://127.0.0.1:${unused}/api/sessions`);
           if (response.ok) {
             return resolve();
           }
@@ -134,17 +132,13 @@ test("server polls sessions, filters children, and proxies message send", async 
       };
       attempt();
     });
-    const sessionsResponse = await fetch(
-      `http://127.0.0.1:${unused}/api/sessions`,
-    );
+    const sessionsResponse = await fetch(`http://127.0.0.1:${unused}/api/sessions`);
     const data = await sessionsResponse.json();
     assert.equal(data.sessions.length, 1);
     assert.equal(data.sessions[0].latest, "Latest work");
     assert.equal(data.sessions[0].status, "running");
     assert.equal(data.sessions[0].latestRole, "assistant");
-    const conversation = await fetch(
-      `http://127.0.0.1:${unused}/api/sessions/root-1/messages?limit=40`,
-    );
+    const conversation = await fetch(`http://127.0.0.1:${unused}/api/sessions/root-1/messages?limit=40`);
     assert.deepEqual(await conversation.json(), {
       messages: [
         {
@@ -163,44 +157,31 @@ test("server polls sessions, filters children, and proxies message send", async 
         },
       ],
     });
-    const unknownConversation = await fetch(
-      `http://127.0.0.1:${unused}/api/sessions/child-1/messages`,
-    );
+    const unknownConversation = await fetch(`http://127.0.0.1:${unused}/api/sessions/child-1/messages`);
     assert.equal(unknownConversation.status, 404);
-    const messageResponse = await fetch(
-      `http://127.0.0.1:${unused}/api/sessions/root-1/message`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: `http://127.0.0.1:${unused}`,
-        },
-        body: JSON.stringify({ text: "  hello  " }),
+    const messageResponse = await fetch(`http://127.0.0.1:${unused}/api/sessions/root-1/message`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: `http://127.0.0.1:${unused}`,
       },
-    );
+      body: JSON.stringify({ text: "  hello  " }),
+    });
     assert.equal(messageResponse.status, 202);
     assert.equal(prompted.text, "hello");
     const pageResponse = await fetch(`http://127.0.0.1:${unused}/`);
     assert.equal(pageResponse.status, 200);
-    assert.match(
-      pageResponse.headers.get("content-security-policy"),
-      /media-src 'self' blob:/,
-    );
-    const badPrompt = await fetch(
-      `http://127.0.0.1:${unused}/api/sessions/child-1/message`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: `http://127.0.0.1:${unused}`,
-        },
-        body: JSON.stringify({ text: "must not reach a child" }),
+    assert.match(pageResponse.headers.get("content-security-policy"), /media-src 'self' blob:/);
+    const badPrompt = await fetch(`http://127.0.0.1:${unused}/api/sessions/child-1/message`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: `http://127.0.0.1:${unused}`,
       },
-    );
+      body: JSON.stringify({ text: "must not reach a child" }),
+    });
     assert.equal(badPrompt.status, 403);
-    const traversal = await fetch(
-      `http://127.0.0.1:${unused}/%2e%2e%2fserver.js`,
-    );
+    const traversal = await fetch(`http://127.0.0.1:${unused}/%2e%2e%2fserver.js`);
     assert.equal(traversal.status, 404);
     const ttsStatus = await fetch(`http://127.0.0.1:${unused}/api/tts/status`);
     assert.deepEqual(await ttsStatus.json(), { enabled: true });
@@ -231,64 +212,49 @@ test("server polls sessions, filters children, and proxies message send", async 
     assert.equal(createGoal.status, 201);
     const goal = await createGoal.json();
     assert.equal(goal.title, "Cloud goal");
-    const sendPlan = await fetch(
-      `http://127.0.0.1:${unused}/api/goals/${goal.id}/send`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: `http://127.0.0.1:${unused}`,
-        },
-        body: JSON.stringify({ sessionId: "root-1" }),
+    const sendPlan = await fetch(`http://127.0.0.1:${unused}/api/goals/${goal.id}/send`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: `http://127.0.0.1:${unused}`,
       },
-    );
+      body: JSON.stringify({ sessionId: "root-1" }),
+    });
     assert.equal(sendPlan.status, 202);
     assert.match(prompted.text, /Cloud goal/);
     assert.match(prompted.text, /Keep sessions aligned/);
-    const broadcastPlan = await fetch(
-      `http://127.0.0.1:${unused}/api/plan/send`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: `http://127.0.0.1:${unused}`,
-        },
-        body: JSON.stringify({ sessionIds: ["root-1"] }),
+    const broadcastPlan = await fetch(`http://127.0.0.1:${unused}/api/plan/send`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: `http://127.0.0.1:${unused}`,
       },
-    );
+      body: JSON.stringify({ sessionIds: ["root-1"] }),
+    });
     assert.equal(broadcastPlan.status, 202);
     assert.match(prompted.text, /Executive plan update/);
-    const broadcastChild = await fetch(
-      `http://127.0.0.1:${unused}/api/plan/send`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: `http://127.0.0.1:${unused}`,
-        },
-        body: JSON.stringify({ sessionIds: ["child-1"] }),
+    const broadcastChild = await fetch(`http://127.0.0.1:${unused}/api/plan/send`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: `http://127.0.0.1:${unused}`,
       },
-    );
+      body: JSON.stringify({ sessionIds: ["child-1"] }),
+    });
     assert.equal(broadcastChild.status, 400);
-    const updateGoal = await fetch(
-      `http://127.0.0.1:${unused}/api/goals/${goal.id}`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          origin: `http://127.0.0.1:${unused}`,
-        },
-        body: JSON.stringify({ status: "in-progress" }),
+    const updateGoal = await fetch(`http://127.0.0.1:${unused}/api/goals/${goal.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        origin: `http://127.0.0.1:${unused}`,
       },
-    );
+      body: JSON.stringify({ status: "in-progress" }),
+    });
     assert.equal((await updateGoal.json()).status, "in-progress");
-    const removeGoal = await fetch(
-      `http://127.0.0.1:${unused}/api/goals/${goal.id}`,
-      {
-        method: "DELETE",
-        headers: { origin: `http://127.0.0.1:${unused}` },
-      },
-    );
+    const removeGoal = await fetch(`http://127.0.0.1:${unused}/api/goals/${goal.id}`, {
+      method: "DELETE",
+      headers: { origin: `http://127.0.0.1:${unused}` },
+    });
     assert.deepEqual(await removeGoal.json(), { deleted: true });
   } finally {
     child.kill();
