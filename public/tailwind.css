@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@theme {
+  --color-ink: #0b0e0c;
+  --color-panel: #151a17;
+  --color-line: #29332d;
+  --color-muted: #929d96;
+  --color-mint: #c4f28c;
+  --color-paper: #f0f3ef;
+  --color-amber-300: #fcd34d;
+}
+@source "./index.html";
+@source "./app.js";

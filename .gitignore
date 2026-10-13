@@ -2,5 +2,7 @@
 node_modules/
 data/
 *.tmp
+/public/app.css
+/public/app.bundle.js
 test-results/
 playwright-report/

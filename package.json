@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "build:css": "postcss public/tailwind.css -o public/app.css",
+    "build:js": "esbuild public/app.js --bundle --format=iife --outfile=public/app.bundle.js",
+    "build": "npm run build:css && npm run build:js",
     "test": "node --test",
     "test:e2e": "playwright test",
     "lint": "eslint .",
@@ -14,7 +17,18 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "autoprefixer": "^10.6.1",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.1",
-    "prettier": "^3.6.2"
+    "postcss": "^8.5.29",
+    "postcss-cli": "^11.0.1",
+    "prettier": "^3.6.2",
+    "tailwindcss": "^4.3.3"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.17",
+    "marked": "^18.1.1",
+    "openid-client": "^6.8.8"
   }
 }

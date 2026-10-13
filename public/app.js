@@ -39,6 +39,8 @@ let voiceGeneration = 0;
 let activePlaybackCancel;
 let seenMessages = new Set();
 
+let userSub = null;
+
 async function request(path, options) {
   const response = await fetch(path, { cache: "no-store", ...options });
   const data = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
@@ -72,16 +74,23 @@ function showStatus(text, state) {
             : "off";
   voiceStatus.dataset.state = state;
   voiceButton.dataset.state = state;
-  voiceButton.classList.toggle("active", state === "listening");
-  voiceButton.classList.toggle("speaking", state === "speaking");
-  voiceButton.classList.toggle("listening", state === "listening");
-  voiceButton.classList.toggle("voice-on", voiceMode);
   voiceButton.setAttribute("aria-pressed", String(voiceMode));
   voiceLabel.textContent = voiceMode ? "Stop voice" : "Start hands-free";
   document.querySelector("#sendDraft").disabled = sending || waitingForReply || speaking || !voiceDraft.value.trim();
   document.querySelector("#resumeVoice").disabled = sending || waitingForReply || speaking;
   document.querySelector("#discardDraft").disabled = sending;
   document.querySelector("#send").disabled = sending || waitingForReply || speaking;
+}
+
+async function checkAuthAndProperties() {
+  try {
+    const { data } = await request("/api/auth/status");
+    userSub = data.user || null;
+    document.querySelector("#user").textContent = userSub || "";
+  } catch {
+    userSub = null;
+    document.querySelector("#user").textContent = "";
+  }
 }
 
 function updateTranscript() {
@@ -180,13 +189,19 @@ function renderSessions() {
     const name = document.createElement("span");
     const state = document.createElement("small");
     button.type = "button";
-    button.className = `session-option${session.id === selected ? " selected" : ""}`;
+    button.className = `grid w-full gap-1 rounded-lg border p-3 text-left transition hover:border-mint focus-visible:outline-2 focus-visible:outline-mint ${session.id === selected ? "border-mint bg-ink" : "border-transparent bg-panel"}`;
+    name.className = "overflow-hidden text-ellipsis whitespace-nowrap";
+    state.className = "overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted";
     name.textContent = session.title;
     state.textContent = session.status === "running" ? "Working" : session.directory || "";
     button.append(name, state);
     button.addEventListener("click", () => selectSession(session.id));
     list.append(button);
   }
+}
+
+function renderMarkdown(text) {
+  return DOMPurify.sanitize(marked.parse(typeof text === "string" ? text : ""), { USE_PROFILES: { html: true } });
 }
 
 function renderMessages() {
@@ -200,7 +215,7 @@ function renderMessages() {
   conversation.replaceChildren();
   if (messages.length === 0) {
     const empty = document.createElement("p");
-    empty.className = "empty-state";
+    empty.className = "m-auto p-6 text-center text-muted";
     empty.textContent = selected ? "No messages in this session yet." : "Choose a session to begin.";
     conversation.append(empty);
     return;
@@ -210,10 +225,13 @@ function renderMessages() {
     const role = document.createElement("span");
     const text = document.createElement("p");
     const time = document.createElement("time");
-    article.className = `message ${message.role}`;
-    role.className = "message-role";
+    article.className = `max-w-[88%] rounded-xl border border-line bg-panel p-4 ${message.role === "user" ? "ml-auto border-mint/40 bg-ink" : "mr-auto"}`;
+    role.className = "text-xs font-semibold text-mint";
     role.textContent = message.role === "assistant" ? "Assistant" : "You";
-    text.textContent = message.text;
+    text.className =
+      "my-2 whitespace-pre-wrap break-words leading-6 [&_a]:text-mint [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-black [&_pre]:p-3 [&_code]:font-mono [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5";
+    text.innerHTML = renderMarkdown(message.text);
+    time.className = "text-[10px] text-muted";
     time.textContent = messageDate(message.time);
     article.append(role, text, time);
     conversation.append(article);
@@ -653,7 +671,7 @@ function stopVoice(message = "Microphone off — voice paused", { preserveDraft 
   stopCapture();
   player.pause();
   player.removeAttribute("src");
-  voiceButton.classList.remove("active", "speaking");
+  voiceButton.dataset.state = error ? "error" : "off";
   voiceButton.setAttribute("aria-pressed", "false");
   voiceLabel.textContent = "Start hands-free";
   recognitionStarting = false;
@@ -718,6 +736,22 @@ document.querySelector("#discardDraft").addEventListener("click", () => {
 });
 
 document.querySelector("#refresh").addEventListener("click", refreshSessions);
+document.querySelector("#newSession").addEventListener("click", async () => {
+  try {
+    const { data } = await request("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "create" }),
+    });
+    await refreshSessions();
+    const created = sessions.find((session) => session.id === data.id);
+    if (created) {
+      selectSession(created.id);
+    }
+  } catch (error) {
+    showStatus(error.message, "error");
+  }
+});
 document.querySelector("#composer").addEventListener("submit", (event) => {
   event.preventDefault();
   sendMessage(document.querySelector("#prompt").value);
@@ -735,7 +769,10 @@ async function loadGoals() {
       const text = document.createElement("span");
       const status = document.createElement("select");
       const remove = document.createElement("button");
-      row.className = "goal-row";
+      row.className = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel p-2";
+      text.className = "min-w-0 flex-1 break-words text-xs";
+      status.className =
+        "max-w-28 rounded border border-line bg-ink p-2 text-sm text-paper focus-visible:outline-2 focus-visible:outline-mint";
       text.textContent = goal.description ? `${goal.title} — ${goal.description}` : goal.title;
       for (const value of ["open", "in-progress", "done"]) {
         const option = document.createElement("option");
@@ -746,7 +783,8 @@ async function loadGoals() {
       }
       status.addEventListener("change", () => updateGoal(goal.id, { status: status.value }));
       remove.type = "button";
-      remove.className = "icon-button";
+      remove.className =
+        "min-h-10 min-w-10 rounded-lg border border-line bg-panel text-xl hover:bg-line focus-visible:outline-2 focus-visible:outline-mint";
       remove.textContent = "×";
       remove.setAttribute("aria-label", `Delete ${goal.title}`);
       remove.addEventListener("click", () => deleteGoal(goal.id));
@@ -817,8 +855,8 @@ document.querySelector("#applyPlan").addEventListener("click", async () => {
 
 async function init() {
   try {
-    const { data } = await request("/api/auth/status");
-    document.querySelector("#user").textContent = data.user || "";
+    await checkAuthAndProperties();
+    document.querySelector("#user").textContent = userSub || "";
   } catch {
     document.querySelector("#user").textContent = "";
   }
@@ -830,3 +868,5 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 init();
+import { marked } from "marked";
+import DOMPurify from "dompurify";

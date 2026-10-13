@@ -83,14 +83,15 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Start hands-free" }).click();
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
-  await expect(page.locator("#voice")).toHaveCSS("background-image", "none");
+  const listeningColor = "rgb(196, 242, 140)";
+  await expect(page.locator("#voice")).not.toHaveCSS("background-color", listeningColor);
   await page.evaluate(() => window.emitRecognitionStart());
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
-  await expect(page.locator("#voice")).not.toHaveCSS("background-image", "none");
+  await expect(page.locator("#voice")).toHaveCSS("background-color", listeningColor);
   await page.evaluate(() => window.emit("First dictated words"));
   await page.waitForTimeout(2_950);
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "review");
-  await expect(page.locator("#voice")).toHaveCSS("background-image", "none");
+  await expect(page.locator("#voice")).not.toHaveCSS("background-color", listeningColor);
   await expect(page.locator("#voiceDraft")).toHaveValue("First dictated words");
   await page.waitForTimeout(1500);
   expect(sent).toEqual([]);

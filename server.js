@@ -4,6 +4,7 @@ import { extname, resolve, sep } from "node:path";
 import { randomBytes, createHash, createPublicKey, verify as verifySignature } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { rootSessions, latestExcerpt, messageText, messageRole } from "./src/utils.js";
+import { isSubjectAllowed } from "./src/auth-policy.js";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
 const host = process.env.HOST || "127.0.0.1";
@@ -17,6 +18,10 @@ if (!loopback && (!issuer || !clientId || !clientSecret || !appUrl.startsWith("h
   throw new Error("External binding requires OIDC credentials and an HTTPS APP_URL");
 }
 const authEnabled = Boolean(issuer && clientId && clientSecret);
+const allowedSubs = (process.env.OIDC_ALLOWED_SUBS || "")
+  .split(",")
+  .map((sub) => sub.trim())
+  .filter(Boolean);
 const opencode = (process.env.OPENCODE_URL || "http://127.0.0.1:4096").replace(/\/$/, "");
 const password = process.env.OPENCODE_SERVER_PASSWORD || process.env.OPENCODE_PASSWORD;
 const remoteAuth = password
@@ -303,6 +308,9 @@ const server = http.createServer(async (req, res) => {
       if (claims.nonce !== flow.nonce) {
         return json(res, 401, { error: "OIDC nonce mismatch" });
       }
+      if (!isSubjectAllowed(identity.sub, allowedSubs)) {
+        return json(res, 403, { error: "Access denied" });
+      }
       const sid = randomBytes(32).toString("base64url");
       identities.set(`auth:${sid}`, {
         ...identity,
@@ -350,6 +358,18 @@ const server = http.createServer(async (req, res) => {
         await refresh();
       }
       return json(res, 200, snapshot);
+    }
+    if (req.method === "POST" && path === "/api/sessions") {
+      const input = await body(req);
+      if (typeof input.type !== "string" || input.type !== "create") {
+        return json(res, 400, { error: "Invalid request type" });
+      }
+      const created = await api("/session", {
+        method: "POST",
+        body: JSON.stringify({ title: "New session" }),
+      });
+      await refresh();
+      return json(res, 201, created.data || created);
     }
     const conversationMatch = path.match(/^\/api\/sessions\/([^/]+)\/messages$/);
     if (req.method === "GET" && conversationMatch) {

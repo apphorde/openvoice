@@ -1,2 +1,4 @@
 test-results/
 playwright-report/
+public/app.css
+public/app.bundle.js

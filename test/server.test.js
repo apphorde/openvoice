@@ -12,6 +12,7 @@ async function listen(server) {
 
 test("server polls sessions, filters children, and proxies message send", async () => {
   let prompted = null;
+  let createdSessionBody = null;
   let ttsAuth = null;
   let ttsInput = null;
   const upstream = http.createServer(async (req, res) => {
@@ -26,6 +27,14 @@ test("server polls sessions, filters children, and proxies message send", async 
           cursor: { next: null, previous: null },
         }),
       );
+    } else if (req.url === "/api/session" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) {
+        body += chunk;
+      }
+      createdSessionBody = JSON.parse(body);
+      res.statusCode = 201;
+      res.end(JSON.stringify({ data: { id: "created-1", title: "New session" } }));
     } else if (req.url === "/api/session/active") {
       res.end(JSON.stringify({ data: { "root-1": { type: "running" } } }));
     } else if (req.url === "/api/session/root-1/message?limit=1&order=desc") {
@@ -138,6 +147,14 @@ test("server polls sessions, filters children, and proxies message send", async 
     assert.equal(data.sessions[0].latest, "Latest work");
     assert.equal(data.sessions[0].status, "running");
     assert.equal(data.sessions[0].latestRole, "assistant");
+    const createResponse = await fetch(`http://127.0.0.1:${unused}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: `http://127.0.0.1:${unused}` },
+      body: JSON.stringify({ type: "create" }),
+    });
+    assert.equal(createResponse.status, 201);
+    assert.deepEqual(await createResponse.json(), { id: "created-1", title: "New session" });
+    assert.deepEqual(createdSessionBody, { title: "New session" });
     const conversation = await fetch(`http://127.0.0.1:${unused}/api/sessions/root-1/messages?limit=40`);
     assert.deepEqual(await conversation.json(), {
       messages: [
