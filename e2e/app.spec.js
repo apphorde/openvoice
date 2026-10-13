@@ -76,6 +76,14 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
       }),
     }),
   );
+  await page.route("**/api/plan/send", async (route) => {
+    expect(route.request().postDataJSON().sessionIds).toEqual(["root-e2e"]);
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ sent: 1, failed: 0 }),
+    });
+  });
 
   await page.goto(baseURL);
   await expect(page).toHaveTitle(/Session Voice/);
@@ -97,6 +105,13 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
     .fill("Verify cross-session plan storage");
   await page.getByRole("button", { name: "Add goal" }).click();
   await expect(page.getByText(title)).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "Send plan to all root sessions" })
+    .click();
+  await expect(page.locator("#goalNotice")).toContainText(
+    "Plan sent to 1 sessions; 0 failed.",
+  );
   await page.screenshot({
     path: "/tmp/opencode/session-voice-mobile.png",
     fullPage: true,

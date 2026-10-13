@@ -432,13 +432,13 @@ const server = http.createServer(async (req, res) => {
       if (
         !Array.isArray(input.sessionIds) ||
         input.sessionIds.length === 0 ||
-        input.sessionIds.length > 50 ||
+        input.sessionIds.length > 250 ||
         input.sessionIds.some(
           (id) => typeof id !== "string" || !rootIds.has(id),
         )
       ) {
         return json(res, 400, {
-          error: "Select 1–50 discovered root sessions",
+          error: "Select 1–250 discovered root sessions",
         });
       }
       const goals = (await readGoals()).filter(
@@ -455,17 +455,29 @@ const server = http.createServer(async (req, res) => {
             `${index + 1}. ${goal.title}${goal.description ? `\n   ${goal.description}` : ""}`,
         )
         .join("\n");
+      let next = 0;
+      let sent = 0;
+      let failed = 0;
+      const worker = async () => {
+        while (next < input.sessionIds.length) {
+          const sessionId = input.sessionIds[next++];
+          try {
+            await api(`/session/${encodeURIComponent(sessionId)}/prompt`, {
+              method: "POST",
+              body: JSON.stringify({
+                text: `Executive plan update — align work with these shared goals:\n\n${plan}`,
+              }),
+            });
+            sent += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+      };
       await Promise.all(
-        input.sessionIds.map((sessionId) =>
-          api(`/session/${encodeURIComponent(sessionId)}/prompt`, {
-            method: "POST",
-            body: JSON.stringify({
-              text: `Executive plan update — align work with these shared goals:\n\n${plan}`,
-            }),
-          }),
-        ),
+        Array.from({ length: Math.min(5, input.sessionIds.length) }, worker),
       );
-      return json(res, 202, { sent: input.sessionIds.length });
+      return json(res, failed ? 207 : 202, { sent, failed });
     }
     const goalMatch = path.match(/^\/api\/goals\/([a-f0-9]{32})$/);
     if (goalMatch && req.method === "PATCH") {
@@ -645,7 +657,7 @@ const server = http.createServer(async (req, res) => {
           "X-Frame-Options": "DENY",
           "Referrer-Policy": "same-origin",
           "Content-Security-Policy":
-            "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+            "default-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
           "Cache-Control": "no-store",
         });
         return res.end(data);

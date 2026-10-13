@@ -257,9 +257,9 @@ document.querySelector("#sendPlan").addEventListener("click", async () => {
 
 document.querySelector("#applyPlan").addEventListener("click", async () => {
   const targets = sessions.map((session) => session.id);
-  if (targets.length === 0 || targets.length > 50) {
+  if (targets.length === 0 || targets.length > 250) {
     document.querySelector("#goalNotice").textContent =
-      "The plan can be sent to 1–50 loaded root sessions.";
+      "The plan can be sent to 1–250 loaded root sessions.";
     return;
   }
   if (
@@ -276,7 +276,7 @@ document.querySelector("#applyPlan").addEventListener("click", async () => {
       body: JSON.stringify({ sessionIds: targets }),
     });
     document.querySelector("#goalNotice").textContent =
-      `Plan sent to ${data.sent} sessions.`;
+      `Plan sent to ${data.sent} sessions; ${data.failed} failed.`;
   } catch (error) {
     document.querySelector("#goalNotice").textContent = error.message;
   }

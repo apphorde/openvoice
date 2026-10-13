@@ -32,7 +32,7 @@ Visit `http://127.0.0.1:4173`. The bind default is loopback. Configure OIDC for 
 
 OIDC uses authorization-code flow with state, nonce, S256 PKCE, server-side sessions, and HttpOnly SameSite=Lax cookies (Secure when HTTPS). Sessions expire after at most eight hours and restart clears them. Authenticated browser mutations must have same-origin `Origin`. Login, callback, signed-out landing, and `/healthz` are unauthenticated. There is no static bearer-token mode. Prompts are limited to discovered root-session IDs. OpenCode activity is read from the documented `/api/session/active` endpoint.
 
-Goal APIs: `GET/POST /api/goals`, `PATCH/DELETE /api/goals/{id}`, and `POST /api/goals/{id}/send` with `{ "sessionId": "..." }`. Goal writes use a temporary file and atomic rename; clients cannot supply filesystem paths. TTS accepts `POST /api/tts` with `{ "text": "..." }` (maximum 1,000 characters); `GET /api/tts/status` reports whether it is configured.
+Goal APIs: `GET/POST /api/goals`, `PATCH/DELETE /api/goals/{id}`, `POST /api/goals/{id}/send` with `{ "sessionId": "..." }`, and `POST /api/plan/send` with 1–250 discovered root-session IDs. The all-session UI action requires confirmation and sends with concurrency capped at five; failed deliveries are reported. Goal writes use a temporary file and atomic rename; clients cannot supply filesystem paths. TTS accepts `POST /api/tts` with `{ "text": "..." }` (maximum 1,000 characters); `GET /api/tts/status` reports whether it is configured.
 
 ## Development checks
 

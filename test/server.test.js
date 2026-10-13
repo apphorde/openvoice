@@ -130,6 +130,10 @@ test("server polls sessions, filters children, and proxies message send", async 
     assert.equal(prompted.text, "hello");
     const pageResponse = await fetch(`http://127.0.0.1:${unused}/`);
     assert.equal(pageResponse.status, 200);
+    assert.match(
+      pageResponse.headers.get("content-security-policy"),
+      /media-src 'self' blob:/,
+    );
     const badPrompt = await fetch(
       `http://127.0.0.1:${unused}/api/sessions/child-1/message`,
       {
