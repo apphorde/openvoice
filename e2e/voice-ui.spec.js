@@ -41,6 +41,13 @@ async function setup(page, options = {}) {
       results.item = (i) => results[i];
       window.recognizers[index]?.onresult?.({ resultIndex: 0, results });
     };
+    window.emitSegments = (segments, index = window.recognizers.length - 1) => {
+      const results = segments.map(({ text, final = true }) =>
+        Object.assign([{ transcript: text }], { isFinal: final }),
+      );
+      results.item = (i) => results[i];
+      window.recognizers[index]?.onresult?.({ resultIndex: 0, results });
+    };
     HTMLMediaElement.prototype.play = function () {
       window.plays = (window.plays || 0) + 1;
       setTimeout(() => this.dispatchEvent(new Event("ended")), 0);
@@ -83,7 +90,7 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Start hands-free" }).click();
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
-  const listeningColor = "rgb(196, 242, 140)";
+  const listeningColor = "rgb(117, 149, 255)";
   await expect(page.locator("#voice")).not.toHaveCSS("background-color", listeningColor);
   await page.evaluate(() => window.emitRecognitionStart());
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
@@ -122,6 +129,28 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
   await page.getByRole("button", { name: "Stop voice" }).click();
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "off");
   expect(errors).toEqual([]);
+});
+
+test("voice-first mode can switch to full conversation and back", async ({ page }) => {
+  await setup(page);
+  await expect(page.getByRole("heading", { name: "Voice note" })).toBeVisible();
+  await expect(page.locator("#conversation")).toBeHidden();
+  await page.getByRole("button", { name: "Open chat history" }).click();
+  await expect(page.locator("#conversation")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to voice note" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#keyboardInput")).toBeVisible();
+  await page.screenshot({ path: "/tmp/opencode/session-voice-chat-mobile.png", fullPage: true });
+  await page.getByRole("button", { name: "Back to voice note" }).click();
+  await expect(page.locator("#conversation")).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Voice note" })).toBeVisible();
+});
+
+test("goals are tucked into the session menu but remain available", async ({ page }) => {
+  await setup(page);
+  await expect(page.locator("#goalsPanel")).toBeHidden();
+  await page.getByText("Switch", { exact: true }).click();
+  await page.getByText(/Executive goals/).click();
+  await expect(page.locator("#goalForm")).toBeVisible();
 });
 
 test("stop and delayed recognizer events preserve editable review; resume and discard work", async ({ page }) => {
@@ -177,7 +206,7 @@ test("typed fallback sends explicitly and failures retain corrected draft withou
   const { sent } = await setup(page, {
     onSend: (route) => route.fulfill({ status: 503, json: { error: "Unavailable" } }),
   });
-  await page.getByText("Type instead", { exact: true }).click();
+  await page.getByRole("button", { name: "Open chat history" }).click();
   await page.locator("#prompt").fill("Typed instruction");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => sent.length).toBe(1);
@@ -307,6 +336,36 @@ test("late final results improve the draft before review and edits survive subse
   await page.locator("#voiceDraft").fill("My own correction");
   await page.getByRole("button", { name: "Stop voice" }).click();
   await expect(page.locator("#voiceDraft")).toHaveValue("My own correction");
+  expect(sent).toEqual([]);
+});
+
+test("repeated cumulative Chrome results don't duplicate the dictated phrase", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emitSegments([{ text: "I want you", final: false }]));
+  await expect(page.locator("#transcriptPreview")).toHaveText("I want you");
+  await page.evaluate(() => window.emitSegments([{ text: "I want you to look", final: false }]));
+  await expect(page.locator("#transcriptPreview")).toHaveText("I want you to look");
+  await page.evaluate(() =>
+    window.emitSegments([
+      { text: "I want you" },
+      { text: "I want you to" },
+      { text: "I want you to look at the screenshots" },
+    ]),
+  );
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("I want you to look at the screenshots");
+  expect(sent).toEqual([]);
+});
+
+test("repeated spoken words in separate Chrome results are preserved", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emitSegments([{ text: "go" }, { text: "go" }]));
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("go go");
   expect(sent).toEqual([]);
 });
 

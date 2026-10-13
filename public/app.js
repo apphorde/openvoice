@@ -1,5 +1,8 @@
 const list = document.querySelector("#list");
 const conversation = document.querySelector("#conversation");
+const modeToggle = document.querySelector("#modeToggle");
+const voiceScreen = document.querySelector(".voice-screen");
+const keyboardInput = document.querySelector("#keyboardInput");
 const voiceButton = document.querySelector("#voice");
 const voiceLabel = document.querySelector("#voiceLabel");
 const voiceStatus = document.querySelector("#voiceStatus");
@@ -10,6 +13,18 @@ const voiceDraft = document.querySelector("#voiceDraft");
 
 let sessions = [];
 let goals = [];
+let chatMode = false;
+
+modeToggle.addEventListener("click", () => {
+  chatMode = !chatMode;
+  conversation.classList.toggle("hidden", !chatMode);
+  conversation.classList.toggle("flex", chatMode);
+  voiceScreen.classList.toggle("hidden", chatMode);
+  keyboardInput.classList.toggle("hidden", !chatMode);
+  modeToggle.textContent = chatMode ? "Voice" : "Chat";
+  modeToggle.setAttribute("aria-label", chatMode ? "Back to voice note" : "Open chat history");
+  modeToggle.setAttribute("aria-pressed", String(chatMode));
+});
 let messages = [];
 let selected = null;
 let historySession = null;
@@ -94,7 +109,10 @@ async function checkAuthAndProperties() {
 }
 
 function updateTranscript() {
-  transcriptPreview.textContent = [utterance, interimTranscript].filter(Boolean).join(" ");
+  const transcript = [utterance, interimTranscript].filter(Boolean).join(" ");
+  transcriptPreview.textContent = transcript || (draftPanel.hidden ? "Tap the microphone and speak" : "");
+  transcriptPreview.classList.toggle("text-[#8090aa]", !transcript);
+  transcriptPreview.classList.toggle("text-[#f3f6fb]", Boolean(transcript));
 }
 
 function showDraft() {
@@ -115,9 +133,10 @@ function showDraft() {
     voiceDraft.value = utterance.trim();
   }
   draftPanel.hidden = false;
+  transcriptPreview.setAttribute("aria-live", "off");
+  transcriptPreview.hidden = true;
   stopCapture();
   listening = false;
-  transcriptPreview.textContent = "";
   showStatus("Review your draft — microphone off");
 }
 
@@ -129,6 +148,8 @@ function resumeDictation() {
   utterance = voiceDraft.value.trim();
   interimTranscript = "";
   draftPanel.hidden = true;
+  transcriptPreview.hidden = false;
+  transcriptPreview.setAttribute("aria-live", "polite");
   updateTranscript();
   startRecognition();
 }
@@ -143,6 +164,8 @@ function clearDraft() {
   voiceDraft.value = "";
   utterance = "";
   interimTranscript = "";
+  transcriptPreview.hidden = false;
+  transcriptPreview.setAttribute("aria-live", "polite");
   updateTranscript();
 }
 
@@ -173,6 +196,27 @@ function requestReview() {
 
 function messageKey(message) {
   return message.id || `${message.role}:${message.time || ""}:${message.text}`;
+}
+
+function mergeTranscript(previous, next) {
+  const previousText = previous.trim();
+  const nextText = next.trim();
+  if (!previousText) {
+    return nextText;
+  }
+  if (!nextText) {
+    return previousText;
+  }
+  const previousWords = previousText.split(/\s+/);
+  const nextWords = nextText.split(/\s+/);
+  const cumulative =
+    nextWords.length > previousWords.length &&
+    previousWords.every((word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(nextWords[index]));
+  return cumulative ? nextText : `${previousText} ${nextText}`;
+}
+
+function normalizeTranscriptWord(word) {
+  return word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 }
 
 function renderSessions() {
@@ -589,8 +633,12 @@ function startRecognition() {
         interim.push(text);
       }
     }
-    utterance = [base, ...final].filter(Boolean).join(" ");
-    interimTranscript = interim.join(" ");
+    utterance = final.reduce(mergeTranscript, base);
+    const withInterim = interim.reduce(mergeTranscript, utterance);
+    interimTranscript = withInterim
+      .split(/\s+/)
+      .slice(utterance.trim() ? utterance.trim().split(/\s+/).length : 0)
+      .join(" ");
     updateTranscript();
     if ((utterance || interimTranscript) && !reviewPending) {
       clearTimeout(sendTimer);

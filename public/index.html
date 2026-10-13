@@ -8,23 +8,96 @@
     <link rel="stylesheet" href="/app.css" />
     <title>OpenVoice</title>
   </head>
-  <body class="min-h-dvh min-w-[320px] bg-ink font-sans text-paper">
-    <main class="mx-auto flex min-h-dvh w-full max-w-[800px] flex-col px-4 py-4">
-      <header class="flex min-h-11 items-center justify-between gap-3">
-        <a
-          class="flex items-center gap-2 text-lg font-semibold tracking-tight text-mint no-underline"
-          href="/"
-          aria-label="OpenVoice home"
-          >◉ <span>OpenVoice</span></a
-        >
-        <div class="flex items-center gap-2 text-sm text-muted">
-          <span id="user"></span>
+  <body class="min-h-dvh min-w-[320px] bg-[#080f20] font-sans text-[#f3f6fb]">
+    <main class="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-5 py-5 sm:px-8 sm:py-7">
+      <header class="grid min-h-12 grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <details id="sessionPicker" class="relative justify-self-start">
+          <summary
+            class="list-none cursor-pointer rounded-full px-3 py-2 text-sm text-[#9eabc1] hover:bg-[#16233a]"
+            aria-label="Switch session"
+          >
+            ‹ <span>Switch</span>
+          </summary>
+          <div
+            class="absolute left-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-[#25324a] bg-[#0d1729] p-3 shadow-xl"
+          >
+            <div class="flex items-center justify-between gap-2 border-b border-[#25324a] pb-2 text-sm font-medium">
+              <span>Sessions</span>
+              <div class="flex gap-1">
+                <button
+                  id="newSession"
+                  class="size-9 rounded-full text-lg text-[#cbd6ea] hover:bg-[#1b2941]"
+                  aria-label="Start new session"
+                >
+                  +
+                </button>
+                <button
+                  id="refresh"
+                  class="size-9 rounded-full text-lg text-[#cbd6ea] hover:bg-[#1b2941]"
+                  aria-label="Refresh sessions"
+                >
+                  ↻
+                </button>
+              </div>
+            </div>
+            <div id="list" class="mt-2 grid max-h-56 gap-2 overflow-auto"></div>
+            <details id="goalsPanel" class="mt-3 border-t border-[#25324a] pt-3">
+              <summary class="cursor-pointer text-sm text-[#9eabc1]">
+                Executive goals <span id="goalCount" class="text-xs text-[#71809a]"></span>
+              </summary>
+              <p class="my-3 text-sm text-[#9eabc1]">
+                Goals are stored centrally. Share them with sessions only when you choose.
+              </p>
+              <button
+                id="applyPlan"
+                class="my-2 min-h-10 rounded-lg border border-[#25324a] px-3 text-sm hover:bg-[#16233a]"
+                type="button"
+              >
+                Send plan to all top-level sessions
+              </button>
+              <p id="goalNotice" class="my-2 text-sm text-[#9eabc1]" aria-live="polite"></p>
+              <form id="goalForm" class="grid gap-2">
+                <label class="text-sm" for="goalTitle">Goal</label>
+                <input
+                  class="w-full rounded-lg border border-[#25324a] bg-[#080f20] p-3"
+                  id="goalTitle"
+                  maxlength="200"
+                  required
+                  placeholder="What outcome matters?"
+                />
+                <label class="text-sm" for="goalDescription">Success criteria</label>
+                <textarea
+                  class="w-full rounded-lg border border-[#25324a] bg-[#080f20] p-3"
+                  id="goalDescription"
+                  rows="2"
+                  maxlength="4000"
+                ></textarea>
+                <button class="min-h-10 rounded-lg bg-[#5277e8] px-4 font-semibold text-white" type="submit">
+                  Add goal
+                </button>
+              </form>
+              <div id="goals" class="mt-3 grid gap-2"></div>
+            </details>
+          </div>
+        </details>
+        <div class="min-w-0 text-center">
+          <h1 class="text-lg font-medium tracking-tight sm:text-xl">Voice note</h1>
+          <p id="sessionTitle" class="truncate text-xs text-[#8090aa]">Loading sessions…</p>
+          <span id="sessionMeta" class="sr-only"></span>
+        </div>
+        <div class="flex items-center justify-self-end gap-2">
+          <span id="user" class="sr-only"></span>
+          <button
+            id="modeToggle"
+            type="button"
+            aria-label="Open chat history"
+            aria-pressed="false"
+            class="rounded-full px-3 py-2 text-sm text-[#9eabc1] hover:bg-[#16233a]"
+          >
+            Chat
+          </button>
           <form method="post" action="/auth/logout">
-            <button
-              class="ml-2 min-h-10 min-w-10 rounded-lg border border-line bg-panel text-paper hover:bg-line focus-visible:outline-2 focus-visible:outline-mint"
-              aria-label="Log out"
-              title="Log out"
-            >
+            <button class="size-9 rounded-full text-[#8090aa] hover:bg-[#16233a]" aria-label="Log out" title="Log out">
               ↗
             </button>
           </form>
@@ -32,44 +105,8 @@
       </header>
 
       <section
-        class="relative my-4 flex items-center justify-between gap-3 rounded-xl border border-line bg-panel p-4"
-        aria-label="Current session"
-      >
-        <div class="flex min-w-0 flex-col gap-1">
-          <span class="text-[10px] font-semibold tracking-[0.16em] text-muted">TALKING TO</span>
-          <strong id="sessionTitle">Loading sessions…</strong>
-          <span id="sessionMeta" class="text-xs text-muted"></span>
-        </div>
-        <details id="sessionPicker" class="relative shrink-0">
-          <summary class="cursor-pointer rounded-lg border border-line px-3 py-2 text-sm hover:bg-line">Switch</summary>
-          <div
-            class="absolute right-0 top-full z-10 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-line bg-panel p-3 shadow-xl"
-          >
-            <div class="flex items-center justify-between gap-2 border-b border-line pb-2 text-sm font-semibold">
-              <span>Top-level sessions</span>
-              <button
-                id="newSession"
-                class="ml-2 min-h-10 min-w-10 rounded-lg border border-line bg-panel text-paper hover:bg-line focus-visible:outline-2 focus-visible:outline-mint"
-                aria-label="Start new session"
-              >
-                +
-              </button>
-              <button
-                id="refresh"
-                class="ml-2 min-h-10 min-w-10 rounded-lg border border-line bg-panel text-paper hover:bg-line focus-visible:outline-2 focus-visible:outline-mint"
-                aria-label="Refresh sessions"
-              >
-                ↻
-              </button>
-            </div>
-            <div id="list" class="mt-2 grid max-h-64 gap-2 overflow-auto"></div>
-          </div>
-        </details>
-      </section>
-
-      <section
         id="conversation"
-        class="my-2 flex max-h-[46dvh] min-h-48 flex-1 flex-col gap-3 overflow-auto p-3"
+        class="chat-history my-2 hidden max-h-[46dvh] min-h-48 flex-1 flex-col gap-3 overflow-auto rounded-2xl border border-[#202c43] bg-[#0d1729] p-4"
         aria-live="polite"
         aria-label="Conversation"
       >
@@ -78,35 +115,38 @@
         </p>
       </section>
 
-      <section class="grid justify-items-center py-3 text-center" aria-label="Voice controls">
+      <section
+        class="voice-screen flex flex-1 flex-col items-center py-8 text-center sm:py-12"
+        aria-label="Voice controls"
+      >
         <p
           id="voiceStatus"
-          class="mb-1 text-sm text-mint data-[state=off]:text-muted data-[state=starting]:text-[#aab4ad] data-[state=waiting]:text-[#aab4ad] data-[state=review]:text-[#e4b96d] data-[state=error]:text-[#ff9b91]"
+          class="mb-1 text-sm text-[#9eabc1] data-[state=starting]:text-[#aab4ad] data-[state=waiting]:text-[#aab4ad] data-[state=review]:text-[#e4b96d] data-[state=error]:text-[#ff9b91]"
           data-state="off"
           aria-live="polite"
         >
           Microphone off — tap to start
         </p>
-        <p id="transcriptPreview" class="min-h-6 max-w-prose text-sm text-paper" aria-live="polite"></p>
-        <div
-          id="draftPanel"
-          class="my-2 w-full max-w-xl rounded-xl border border-[#80683f] bg-[#211d15] p-4 text-left"
-          hidden
+        <p
+          id="transcriptPreview"
+          class="min-h-48 w-full max-w-3xl whitespace-pre-wrap pt-8 text-left text-3xl leading-[1.35] text-[#8090aa] sm:text-4xl"
+          aria-live="polite"
         >
-          <label class="mb-2 block text-sm font-semibold text-[#f0d19a]" for="voiceDraft">Review your message</label>
+          Tap the microphone and speak
+        </p>
+        <div id="draftPanel" class="my-3 w-full max-w-3xl text-left" hidden>
+          <label class="sr-only" for="voiceDraft">Review and edit your message</label>
           <textarea
-            class="w-full rounded-lg border border-line bg-ink p-3 text-paper focus-visible:outline-2 focus-visible:outline-mint"
+            class="min-h-48 w-full resize-none bg-transparent text-left text-3xl leading-[1.35] text-[#f3f6fb] focus-visible:outline-2 focus-visible:outline-[#7595ff] sm:text-4xl"
             id="voiceDraft"
             rows="3"
             aria-describedby="draftHint"
           ></textarea>
-          <p id="draftHint" class="my-2 text-xs text-[#d0b782]">
-            Microphone off · Nothing is sent until you choose Send.
-          </p>
-          <div class="flex flex-wrap justify-end gap-2">
+          <p id="draftHint" class="sr-only">Microphone off · Nothing is sent until you choose Send.</p>
+          <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
             <button
               id="sendDraft"
-              class="min-h-10 rounded-lg bg-mint px-4 font-semibold text-ink hover:brightness-110 disabled:opacity-50"
+              class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
               type="button"
             >
               Send
@@ -127,11 +167,25 @@
             </button>
           </div>
         </div>
+        <svg
+          class="mt-8 h-20 w-full max-w-xl text-[#7595ff] sm:mt-12"
+          aria-hidden="true"
+          viewBox="0 0 320 64"
+          fill="none"
+        >
+          <path
+            d="M6 31v2m12-8v18m12-27v36m12-21v6m12-17v28m12-34v40m12-23v6m12-17v28m12-35v42m12-29v16m12-22v28m12-39v50m12-32v14m12-23v32m12-27v22m12-36v50m12-28v6m12-17v28m12-34v40m12-25v10m12-19v28m12-37v46m12-30v14m12-22v30m12-39v48m12-29v10m12-19v28m12-35v42m12-25v8m12-16v24m12-31v38m12-24v10m12-17v24m12-31v38m12-23v8m12-15v22m12-27v32m12-19v6"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+          />
+        </svg>
         <button
           id="voice"
-          class="mt-2 flex min-h-16 w-[min(74vw,224px)] items-center justify-center gap-3 rounded-[36px] border border-[#59645c] bg-[#303832] px-7 text-base font-semibold text-paper shadow-lg transition hover:border-mint hover:bg-line active:scale-[.97] focus-visible:outline-2 focus-visible:outline-mint data-[state=listening]:animate-pulse data-[state=listening]:border-mint data-[state=listening]:bg-mint data-[state=listening]:text-ink data-[state=speaking]:border-[#b7cde6] data-[state=speaking]:bg-[#b7cde6] data-[state=speaking]:text-[#15202d]"
+          class="mt-auto mb-5 flex size-20 shrink-0 items-center justify-center rounded-full border border-[#7595ff] bg-[#5277e8] text-white shadow-[0_0_36px_#5277e866] transition hover:bg-[#6488f5] active:scale-[.97] focus-visible:outline-2 focus-visible:outline-white data-[state=listening]:animate-pulse data-[state=listening]:bg-[#7595ff] data-[state=speaking]:bg-[#b7cde6] data-[state=speaking]:text-[#15202d]"
           type="button"
           aria-pressed="false"
+          aria-labelledby="voiceLabel"
         >
           <svg class="size-6" aria-hidden="true" viewBox="0 0 24 24" fill="none">
             <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
@@ -142,18 +196,15 @@
               stroke-linecap="round"
             />
           </svg>
-          <span id="voiceLabel">Start hands-free</span>
+          <span id="voiceLabel" class="sr-only">Start hands-free</span>
         </button>
-        <p class="mt-2 max-w-sm text-xs leading-5 text-muted">
-          Tap to listen. After a pause, review and edit your draft before sending.
-        </p>
+        <p class="sr-only">Tap to listen. After a pause, review and edit your draft before sending.</p>
       </section>
 
-      <details id="keyboardInput" class="my-2 rounded-xl border border-line bg-panel p-4">
-        <summary>Type instead</summary>
+      <section id="keyboardInput" class="hidden w-full border-t border-[#202c43] py-4">
         <form id="composer" class="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
           <textarea
-            class="w-full rounded-lg border border-line bg-ink p-3 text-paper focus-visible:outline-2 focus-visible:outline-mint"
+            class="w-full rounded-xl border border-[#25324a] bg-[#0d1729] p-4 text-[#f3f6fb] placeholder:text-[#71809a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
             id="prompt"
             aria-label="Instruction"
             rows="2"
@@ -161,57 +212,16 @@
           ></textarea>
           <button
             id="send"
-            class="min-h-10 rounded-lg bg-mint px-4 font-semibold text-ink hover:brightness-110 disabled:opacity-50"
+            class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
             type="submit"
           >
             Send
           </button>
         </form>
-      </details>
-
-      <details id="goalsPanel" class="my-2 rounded-xl border border-line bg-panel p-4">
-        <summary class="cursor-pointer font-semibold">
-          Executive goals <span id="goalCount" class="text-xs text-muted"></span>
-        </summary>
-        <p class="my-3 text-sm text-muted">
-          Goals are stored centrally. Share them with sessions only when you choose.
-        </p>
-        <button
-          id="applyPlan"
-          class="my-2 min-h-10 rounded-lg border border-line px-3 text-sm hover:bg-line"
-          type="button"
-        >
-          Send plan to all top-level sessions
-        </button>
-        <p id="goalNotice" class="my-2 text-sm text-mint" aria-live="polite"></p>
-        <form id="goalForm" class="grid gap-2 sm:grid-cols-2">
-          <label class="self-center text-sm font-medium" for="goalTitle">Goal</label>
-          <input
-            class="w-full rounded-lg border border-line bg-ink p-3 text-paper focus-visible:outline-2 focus-visible:outline-mint"
-            id="goalTitle"
-            maxlength="200"
-            required
-            placeholder="What outcome matters?"
-          />
-          <label class="self-center text-sm font-medium" for="goalDescription">Success criteria</label>
-          <textarea
-            class="w-full rounded-lg border border-line bg-ink p-3 text-paper focus-visible:outline-2 focus-visible:outline-mint"
-            id="goalDescription"
-            rows="2"
-            maxlength="4000"
-          ></textarea>
-          <button
-            class="min-h-10 rounded-lg bg-mint px-4 font-semibold text-ink hover:brightness-110 sm:col-start-2"
-            type="submit"
-          >
-            Add goal
-          </button>
-        </form>
-        <div id="goals" class="mt-3 grid gap-2"></div>
-      </details>
+      </section>
 
       <audio id="player" hidden></audio>
-      <footer id="connectionStatus" class="mt-auto pt-4 text-center text-xs leading-5 text-muted">
+      <footer id="connectionStatus" class="sr-only">
         Voice works while this app stays open. Microphone access is controlled by your browser.
       </footer>
     </main>
