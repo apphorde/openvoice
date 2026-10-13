@@ -40,6 +40,33 @@ test("server polls sessions, filters children, and proxies message send", async 
           cursor: { next: null, previous: null },
         }),
       );
+    } else if (
+      req.url === "/api/session/root-1/message?limit=30&order=desc" ||
+      req.url === "/api/session/root-1/message?limit=40&order=desc"
+    ) {
+      res.end(
+        JSON.stringify({
+          data: [
+            {
+              type: "assistant",
+              finish: "stop",
+              time: { created: 100, completed: 110 },
+              info: {
+                id: "message-1",
+                role: "assistant",
+                time: { created: 100 },
+              },
+              parts: [{ type: "text", text: "Full assistant response" }],
+            },
+            {
+              id: "message-0",
+              type: "user",
+              time: { created: 90 },
+              parts: [{ type: "text", text: "Earlier instruction" }],
+            },
+          ],
+        }),
+      );
     } else if (req.url === "/api/session/root-1/prompt") {
       let body = "";
       for await (const chunk of req) {
@@ -115,6 +142,31 @@ test("server polls sessions, filters children, and proxies message send", async 
     assert.equal(data.sessions[0].latest, "Latest work");
     assert.equal(data.sessions[0].status, "running");
     assert.equal(data.sessions[0].latestRole, "assistant");
+    const conversation = await fetch(
+      `http://127.0.0.1:${unused}/api/sessions/root-1/messages?limit=40`,
+    );
+    assert.deepEqual(await conversation.json(), {
+      messages: [
+        {
+          id: "message-0",
+          role: "user",
+          text: "Earlier instruction",
+          time: 90,
+        },
+        {
+          id: "message-1",
+          role: "assistant",
+          text: "Full assistant response",
+          time: 100,
+          completed: true,
+          finish: "stop",
+        },
+      ],
+    });
+    const unknownConversation = await fetch(
+      `http://127.0.0.1:${unused}/api/sessions/child-1/messages`,
+    );
+    assert.equal(unknownConversation.status, 404);
     const messageResponse = await fetch(
       `http://127.0.0.1:${unused}/api/sessions/root-1/message`,
       {

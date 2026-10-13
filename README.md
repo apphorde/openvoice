@@ -1,6 +1,12 @@
-# Session Voice
+# OpenVoice
 
 A local PWA for viewing root OpenCode sessions, sending text instructions, and managing persistent goals. Speech input uses browser speech recognition. The server proxies OpenCode requests; its credentials never reach the browser.
+
+## Voice-first interface
+
+The current root session and its conversation are shown first. Use **Switch** to choose another session; the last selection is remembered on this browser. **Start hands-free** enables dictation: pause after an instruction to send it, then the app reads the assistant reply and resumes listening. Tap the same button to stop. **Type instead** and **Executive goals** stay collapsed until needed; broadcasting goals still requires confirmation.
+
+Hands-free use requires a browser supporting SpeechRecognition, microphone permission, and configured server-side TTS. Browser recognition may use the browser vendor's speech service. Keep the app open and foregrounded; locked-screen/background listening is not guaranteed. Browser autoplay restrictions can require another interaction before audio can play. Typed instructions remain available when voice is unsupported. Stopping voice does not cancel an instruction already delivered to OpenCode.
 
 ## Run locally
 
@@ -40,7 +46,21 @@ Goal APIs: `GET/POST /api/goals`, `PATCH/DELETE /api/goals/{id}`, `POST /api/goa
 npm test
 npm run lint
 npm run format:check
-AUTH_LAB_COOKIE_JAR=/secure/path/auth-cookie-jar SESSION_VOICE_BASE_URL=http://127.0.0.1:4173 pnpm exec playwright test
+# Against an isolated local development server (no live OpenCode writes):
+pnpm exec playwright test e2e/voice-ui.spec.js
+# Against a local server configured with a temporary Auth Lab client:
+AUTH_LAB_COOKIE_JAR=/secure/path/auth-cookie-jar SESSION_VOICE_BASE_URL=http://127.0.0.1:4173 EXPECTED_OIDC_ORIGIN=https://auth.lab.apphor.de pnpm exec playwright test e2e/app.spec.js e2e/public-smoke.spec.js
+# Read-only production boundary smoke test:
+SESSION_VOICE_BASE_URL=https://openvoice.apphor.de pnpm exec playwright test e2e/public-smoke.spec.js
 ```
 
 The OpenCode V2 API contract is documented at https://opencode.ai/v2/openapi.json. For public deployment, bind to `0.0.0.0`, set the exact HTTPS `APP_URL`, use the production Auth issuer/client credentials, and persist `/data` outside the container. Never deploy with the Auth Lab issuer. The domain `openvoice.apphor.de` must not be exposed until production OIDC credentials are configured.
+
+## Container image
+
+```sh
+docker build -t ghcr.io/apphorde/openvoice:latest .
+docker push ghcr.io/apphorde/openvoice:latest
+```
+
+The image extends `ghcr.io/cloud-cli/image-node:latest`, contains the application in `/home/app`, and listens on port 4173. Only runtime sources and production dependencies are included; credentials must be supplied at runtime. Mount persistent goal storage at `/data`, not over the bundled application. The Cloudy service is named `openvoice.apphor.de`; re-fetch its definition and environment before deploying so operator changes are preserved.

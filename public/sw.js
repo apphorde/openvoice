@@ -1,4 +1,4 @@
-const CACHE = "session-voice-v1";
+const CACHE = "session-voice-v2";
 self.addEventListener("install", (e) =>
   e.waitUntil(
     caches
@@ -8,7 +8,18 @@ self.addEventListener("install", (e) =>
       ),
   ),
 );
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("activate", (e) =>
+  e.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)),
+        ),
+      )
+      .then(() => self.clients.claim()),
+  ),
+);
 self.addEventListener("fetch", (e) => {
   if (
     e.request.method === "GET" &&

@@ -1,10 +1,10 @@
 {
-  "name": "Session Voice",
-  "short_name": "Sessions",
+  "name": "OpenVoice",
+  "short_name": "OpenVoice",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#101312",
-  "theme_color": "#101312",
+  "background_color": "#0b0e0c",
+  "theme_color": "#0b0e0c",
   "icons": [
     {
       "src": "/icon.svg",

@@ -76,6 +76,22 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
       }),
     }),
   );
+  await page.route("**/api/sessions/root-e2e/messages**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "answer-1",
+            role: "assistant",
+            text: "Ready for instructions.",
+            time: Date.now(),
+          },
+        ],
+      }),
+    }),
+  );
   await page.route("**/api/plan/send", async (route) => {
     expect(route.request().postDataJSON().sessionIds).toEqual(["root-e2e"]);
     await route.fulfill({
@@ -84,33 +100,54 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
       body: JSON.stringify({ sent: 1, failed: 0 }),
     });
   });
+  await page.route("**/api/sessions/root-e2e/message", async (route) => {
+    expect(route.request().postDataJSON().text).toBe(
+      "Please summarize progress",
+    );
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: "{}",
+    });
+  });
 
   await page.goto(baseURL);
-  await expect(page).toHaveTitle(/Session Voice/);
-  await expect(
-    page.getByRole("heading", { name: "Executive goals" }),
-  ).toBeVisible();
+  await expect(page).toHaveTitle(/OpenVoice/);
+  await expect(page.getByText("Ready for instructions.")).toBeVisible();
+  await expect(page.locator("#goalsPanel")).not.toHaveAttribute("open", "");
+  await page.getByText("Switch", { exact: true }).click();
   await page.getByRole("button", { name: /Executive cloud session/ }).click();
-  await expect(page.locator("#empty")).toBeHidden();
-  await expect(page.locator("#selected")).toBeVisible();
-  await page.getByRole("button", { name: /Start voice/ }).click();
-  await expect(page.locator("#voiceState")).toHaveText("Listening…");
-  await expect(page.locator("#prompt")).toHaveValue("Check all project goals");
-  await page.getByRole("button", { name: /Stop voice/ }).click();
+  await expect(page.locator("#sessionTitle")).toHaveText(
+    "Executive cloud session",
+  );
+  await page.getByRole("button", { name: /Start hands-free/ }).click();
+  await expect(page.locator("#transcriptPreview")).toContainText(
+    "Check all project goals",
+  );
+  await page.getByRole("button", { name: /Stop listening/ }).click();
+  await page.getByText("Type instead", { exact: true }).click();
+  await page
+    .getByPlaceholder("Write an instruction…")
+    .fill("Please summarize progress");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator("#voiceStatus")).toContainText(
+    "Waiting for the reply",
+  );
 
+  await page.getByText(/Executive goals/).click();
   const title = `E2E goal ${Date.now()}`;
   await page.getByLabel("Goal", { exact: true }).fill(title);
   await page
-    .getByLabel("Context / success criteria")
+    .getByLabel("Success criteria")
     .fill("Verify cross-session plan storage");
   await page.getByRole("button", { name: "Add goal" }).click();
   await expect(page.getByText(title)).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
   await page
-    .getByRole("button", { name: "Send plan to all root sessions" })
+    .getByRole("button", { name: "Send plan to all top-level sessions" })
     .click();
   await expect(page.locator("#goalNotice")).toContainText(
-    "Plan sent to 1 sessions; 0 failed.",
+    "Sent to 1; 0 failed.",
   );
   await page.screenshot({
     path: "/tmp/opencode/session-voice-mobile.png",

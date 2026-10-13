@@ -8,7 +8,12 @@ import {
   verify as verifySignature,
 } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { rootSessions, latestExcerpt } from "./src/utils.js";
+import {
+  rootSessions,
+  latestExcerpt,
+  messageText,
+  messageRole,
+} from "./src/utils.js";
 
 const dir = fileURLToPath(new URL(".", import.meta.url));
 const host = process.env.HOST || "127.0.0.1";
@@ -205,7 +210,7 @@ async function refresh() {
           time: s.time?.updated || s.time?.created,
           status: active.data?.[s.id]?.type || "idle",
           latest: latestExcerpt(last),
-          latestRole: last?.type || "",
+          latestRole: messageRole(last),
         };
       }),
     );
@@ -391,6 +396,49 @@ const server = http.createServer(async (req, res) => {
         await refresh();
       }
       return json(res, 200, snapshot);
+    }
+    const conversationMatch = path.match(
+      /^\/api\/sessions\/([^/]+)\/messages$/,
+    );
+    if (req.method === "GET" && conversationMatch) {
+      const id = decodeURIComponent(conversationMatch[1]);
+      if (!rootIds.has(id)) {
+        return json(res, 404, { error: "Root session not found" });
+      }
+      const requestedLimit = Number(url.searchParams.get("limit") || 30);
+      const limit = Number.isInteger(requestedLimit)
+        ? Math.max(1, Math.min(50, requestedLimit))
+        : 30;
+      const response = await api(
+        `/session/${encodeURIComponent(id)}/message?limit=${limit}&order=desc`,
+      );
+      const entries = Array.isArray(response)
+        ? response
+        : Array.isArray(response.data)
+          ? response.data
+          : [];
+      const messages = entries
+        .filter((message) =>
+          ["user", "assistant"].includes(messageRole(message)),
+        )
+        .map((message) => ({
+          id: message.id || message.info?.id,
+          role: messageRole(message),
+          text: messageText(message).slice(0, 6000),
+          time: message.time?.created || message.info?.time?.created,
+          completed:
+            messageRole(message) === "assistant"
+              ? typeof (
+                  message.time?.completed ?? message.info?.time?.completed
+                ) === "number"
+              : undefined,
+          finish:
+            messageRole(message) === "assistant"
+              ? message.finish || message.info?.finish
+              : undefined,
+        }))
+        .filter((message) => message.text);
+      return json(res, 200, { messages: messages.reverse() });
     }
     if (req.method === "GET" && path === "/api/auth/status") {
       return json(res, 200, {

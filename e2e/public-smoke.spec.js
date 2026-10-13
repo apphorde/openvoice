@@ -4,6 +4,10 @@ test("public deployment health, OIDC redirect, and API boundary", async ({
   request,
   baseURL,
 }) => {
+  test.skip(
+    !process.env.SESSION_VOICE_BASE_URL,
+    "Requires an explicit OIDC-protected deployment URL",
+  );
   const health = await request.get(`${baseURL}/healthz`);
   expect(health.status()).toBe(200);
   expect(await health.json()).toEqual({ healthy: true });

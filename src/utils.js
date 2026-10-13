@@ -12,7 +12,7 @@ export function rootSessions(sessions) {
         (a.time?.updated || a.time?.created || 0),
     );
 }
-export function latestExcerpt(message) {
+export function messageText(message) {
   if (!message) {
     return "";
   }
@@ -24,8 +24,16 @@ export function latestExcerpt(message) {
     )
     .map((part) => part.text)
     .concat(typeof message.text === "string" ? [message.text] : [])
-    .join(" ")
-    .replace(/\s+/g, " ")
+    .join("\n")
     .trim();
+  return text;
+}
+
+export function latestExcerpt(message) {
+  const text = messageText(message).replace(/\s+/g, " ");
   return text.length > 180 ? `${text.slice(0, 177)}…` : text;
+}
+
+export function messageRole(message) {
+  return message?.type || message?.role || message?.info?.role || "";
 }
