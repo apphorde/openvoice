@@ -2,6 +2,7 @@
 !Dockerfile
 !package.json
 !package-lock.json
+!postcss.config.mjs
 !server.js
 !src/
 !src/**

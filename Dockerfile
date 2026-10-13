@@ -2,6 +2,7 @@ FROM ghcr.io/cloud-cli/image-node:latest
 
 WORKDIR /home/app
 COPY --chown=1000:1000 package.json package-lock.json ./
+COPY --chown=1000:1000 postcss.config.mjs ./
 COPY --chown=1000:1000 server.js ./
 COPY --chown=1000:1000 src ./src
 COPY --chown=1000:1000 public ./public
