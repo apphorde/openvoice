@@ -6,416 +6,349 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-async function prepareVoiceApp(page, { sessions, onSend, onTts } = {}) {
-  const sessionList = sessions || [
-    { id: "root-a", title: "Project A", directory: "/a", status: "idle" },
+async function setup(page, options = {}) {
+  const sessions = options.sessions || [
+    { id: "a", title: "Project A", status: "idle" },
+    { id: "b", title: "Project B", status: "idle" },
   ];
-  const messages = Object.fromEntries(
-    sessionList.map((session) => [session.id, []]),
-  );
+  const messages = Object.fromEntries(sessions.map(({ id }) => [id, []]));
   const sent = [];
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript(() => {
-    HTMLMediaElement.prototype.play = function () {
-      window.audioPlays = (window.audioPlays || 0) + 1;
-      setTimeout(() => this.dispatchEvent(new Event("ended")), 0);
-      return Promise.resolve();
-    };
+    window.recognizers = [];
     window.SpeechRecognition = class {
       start() {
-        window.activeRecognition = this;
-        window.recognitionStarts = (window.recognitionStarts || 0) + 1;
-      }
-      stop() {
-        this.onend?.();
-      }
-    };
-    window.emitVoice = (transcript) => {
-      const results = [Object.assign([{ transcript }], { isFinal: true })];
-      results.item = (index) => results[index];
-      window.activeRecognition?.onresult?.({ resultIndex: 0, results });
-    };
-  });
-  await page.route("**/api/auth/status", (route) =>
-    route.fulfill({ json: { enabled: false, user: null } }),
-  );
-  await page.route("**/api/sessions", (route) =>
-    route.fulfill({ json: { sessions: sessionList } }),
-  );
-  await page.route("**/api/sessions/*/messages**", (route) => {
-    const sessionID = new URL(route.request().url()).pathname.split("/")[3];
-    return route.fulfill({ json: { messages: messages[sessionID] || [] } });
-  });
-  await page.route("**/api/sessions/*/message", async (route) => {
-    const sessionID = new URL(route.request().url()).pathname.split("/")[3];
-    const text = route.request().postDataJSON().text;
-    sent.push({ sessionID, text });
-    if (onSend) {
-      await onSend(route, { sessionID, text, messages });
-    } else {
-      messages[sessionID].push(
-        { id: `user-${sent.length}`, role: "user", text },
-        {
-          id: `assistant-${sent.length}`,
-          role: "assistant",
-          text: "Done.",
-          completed: true,
-          finish: "stop",
-        },
-      );
-      await route.fulfill({ status: 202, json: {} });
-    }
-  });
-  await page.route("**/api/goals", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/tts", async (route) => {
-    if (onTts) {
-      await onTts(route);
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: "audio/mpeg",
-        body: "audio",
-      });
-    }
-  });
-  await page.goto("/");
-  return { messages, sent };
-}
-
-test("voice-first conversation, session switching, typed fallback, and tucked-away goals", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.addInitScript(() => {
-    HTMLMediaElement.prototype.play = function () {
-      window.audioPlays = (window.audioPlays || 0) + 1;
-      setTimeout(() => this.dispatchEvent(new Event("ended")), 0);
-      return Promise.resolve();
-    };
-  });
-  await page.addInitScript(() => {
-    window.SpeechRecognition = class {
-      start() {
-        window.activeRecognition = this;
-        window.recognitionStarts = (window.recognitionStarts || 0) + 1;
-        if (window.recognitionStarts === 1) {
-          const results = [
-            Object.assign([{ transcript: "Check deployment status" }], {
-              isFinal: true,
-            }),
-          ];
-          results.item = (index) => results[index];
-          setTimeout(() => this.onresult?.({ resultIndex: 0, results }), 10);
+        window.recognizers.push(this);
+        window.recognition = this;
+        this.starts = (this.starts || 0) + 1;
+        if (window.autoStart) {
+          setTimeout(() => this.onstart?.(), window.autoStart);
         }
       }
       stop() {
-        this.onend?.();
+        if (window.autoEnd) {
+          setTimeout(() => this.onend?.(), window.autoEnd);
+        } else {
+          this.onend?.();
+        }
       }
     };
-    window.emitVoice = (transcript) => {
-      const results = [Object.assign([{ transcript }], { isFinal: true })];
-      results.item = (index) => results[index];
-      window.activeRecognition?.onresult?.({ resultIndex: 0, results });
+    window.emitRecognitionStart = (index = window.recognizers.length - 1) => window.recognizers[index]?.onstart?.();
+    window.endRecognition = (index = window.recognizers.length - 1) => window.recognizers[index]?.onend?.();
+    window.emit = (text, final = true, index = window.recognizers.length - 1) => {
+      const results = [Object.assign([{ transcript: text }], { isFinal: final })];
+      results.item = (i) => results[i];
+      window.recognizers[index]?.onresult?.({ resultIndex: 0, results });
+    };
+    HTMLMediaElement.prototype.play = function () {
+      window.plays = (window.plays || 0) + 1;
+      setTimeout(() => this.dispatchEvent(new Event("ended")), 0);
+      return Promise.resolve();
     };
   });
-  let sentText;
-  let conversationMessages = [
-    {
-      id: "reply-ui",
-      role: "assistant",
-      text: "Ready when you are.",
-      time: Date.now(),
-      completed: true,
-      finish: "stop",
-    },
-  ];
-  await page.route("**/api/auth/status", (route) =>
-    route.fulfill({ json: { enabled: false, user: null } }),
-  );
-  await page.route("**/api/sessions", (route) =>
-    route.fulfill({
-      json: {
-        sessions: [
-          {
-            id: "root-ui",
-            title: "Main project",
-            directory: "/workspace/main",
-            status: "idle",
-          },
-        ],
-      },
-    }),
-  );
-  await page.route("**/api/sessions/root-ui/messages**", (route) =>
-    route.fulfill({
-      json: {
-        messages: conversationMessages,
-      },
-    }),
-  );
-  await page.route("**/api/sessions/root-ui/message", async (route) => {
-    sentText = route.request().postDataJSON().text;
-    if (sentText === "Check deployment status") {
-      conversationMessages = [
-        ...conversationMessages,
-        { id: "user-voice", role: "user", text: sentText },
-        {
-          id: "assistant-voice",
-          role: "assistant",
-          text: "Deployment is healthy.",
-          completed: true,
-          finish: "stop",
-        },
-      ];
-    } else if (sentText === "Check follow-up status") {
-      conversationMessages = [
-        ...conversationMessages,
-        { id: "user-follow-up", role: "user", text: sentText },
-        {
-          id: "assistant-follow-up",
-          role: "assistant",
-          text: "The follow-up is clear.",
-          completed: true,
-          finish: "stop",
-        },
-      ];
+  await page.route("**/api/auth/status", (r) => r.fulfill({ json: { user: null } }));
+  await page.route("**/api/sessions", (r) => r.fulfill({ json: { sessions } }));
+  await page.route("**/api/sessions/*/messages**", (r) => {
+    const id = new URL(r.request().url()).pathname.split("/")[3];
+    return r.fulfill({ json: { messages: messages[id] || [] } });
+  });
+  await page.route("**/api/sessions/*/message", async (r) => {
+    const id = new URL(r.request().url()).pathname.split("/")[3];
+    const text = r.request().postDataJSON().text;
+    sent.push({ id, text });
+    if (options.onSend) {
+      return options.onSend(r, { id, text, messages, sent });
     }
-    await route.fulfill({ status: 202, json: {} });
+    messages[id].push(
+      { id: `u-${sent.length}`, role: "user", text },
+      { id: `a-${sent.length}`, role: "assistant", text: "All set", completed: true, finish: "stop" },
+    );
+    return r.fulfill({ status: 202, json: {} });
   });
-  await page.route("**/api/goals", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/tts", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "audio/mpeg",
-      body: "mock audio",
-    }),
-  );
-
+  await page.route("**/api/goals", (r) => r.fulfill({ json: [] }));
+  await page.route("**/api/tts", async (r) => {
+    if (options.onTts) {
+      return options.onTts(r);
+    }
+    return r.fulfill({ status: 200, contentType: "audio/mpeg", body: "audio" });
+  });
   await page.goto("/");
-  await expect(page.locator("#sessionTitle")).toHaveText("Main project");
-  await expect(page.getByText("Ready when you are.")).toBeVisible();
-  await expect(page.locator("#goalsPanel")).not.toHaveAttribute("open", "");
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await expect.poll(() => sentText).toBe("Check deployment status");
-  await expect(page.getByText("Deployment is healthy.")).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => window.recognitionStarts))
-    .toBeGreaterThan(1);
-  await expect
-    .poll(() => page.evaluate(() => window.audioPlays))
-    .toBeGreaterThan(0);
-  await page.evaluate(() => window.emitVoice("Check follow-up status"));
-  await expect.poll(() => sentText).toBe("Check follow-up status");
-  await expect(page.getByText("The follow-up is clear.")).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => window.audioPlays))
-    .toBeGreaterThan(1);
-  await page.getByRole("button", { name: /Stop listening/ }).click();
-  await page.getByText("Type instead", { exact: true }).click();
-  await page.getByPlaceholder("Write an instruction…").fill("Please check now");
-  await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect.poll(() => sentText).toBe("Please check now");
-  await expect(page.locator("#voiceStatus")).toContainText(
-    "Waiting for the reply",
-  );
+  await expect(page.locator("#sessionTitle")).toHaveText(sessions[0].title);
+  return { sent, messages, errors, sessions };
+}
 
-  await page.screenshot({
-    path: "/tmp/opencode/session-voice-voice-first.png",
-    fullPage: true,
-  });
+test("Chrome voice confirmation flow takes two explicit turns and never auto-sends", async ({ page }) => {
+  const { sent, errors } = await setup(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
+  await expect(page.locator("#voice")).toHaveCSS("background-image", "none");
+  await page.evaluate(() => window.emitRecognitionStart());
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  await expect(page.locator("#voice")).not.toHaveCSS("background-image", "none");
+  await page.evaluate(() => window.emit("First dictated words"));
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "review");
+  await expect(page.locator("#voice")).toHaveCSS("background-image", "none");
+  await expect(page.locator("#voiceDraft")).toHaveValue("First dictated words");
+  await page.waitForTimeout(1500);
+  expect(sent).toEqual([]);
+  await page.screenshot({ path: "/tmp/opencode/session-voice-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: "/tmp/opencode/session-voice-desktop.png", fullPage: true });
+  await page.locator("#voiceDraft").fill("Corrected first turn");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  await page
+    .getByRole("button", { name: "Send", exact: true })
+    .click({ timeout: 500 })
+    .catch(() => {});
+  expect(sent).toHaveLength(1);
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
+  await page.evaluate(() => window.emitRecognitionStart());
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  await page.evaluate(() => window.emit("Second dictated turn"));
+  await page.waitForTimeout(2_900);
+  await expect(page.locator("#voiceDraft")).toHaveValue("Second dictated turn");
+  expect(sent).toHaveLength(1);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => sent.length).toBe(2);
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
+  await page.evaluate(() => window.emitRecognitionStart());
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  expect(sent.map(({ text }) => text)).toEqual(["Corrected first turn", "Second dictated turn"]);
+  await page.getByRole("button", { name: "Stop voice" }).click();
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "off");
+  expect(errors).toEqual([]);
 });
 
-test("only speaks complete assistant replies, then waits for completion", async ({
+test("stop and delayed recognizer events preserve editable review; resume and discard work", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Keep this draft"));
+  const stopped = page.evaluate(() => window.recognizers[0].stop());
+  await stopped;
+  await expect(page.locator("#voiceDraft")).toHaveValue("Keep this draft");
+  await page.locator("#voiceDraft").fill("Corrected while stopped");
+  await page.getByRole("button", { name: "Stop voice" }).click();
+  await expect(page.locator("#voiceDraft")).toHaveValue("Corrected while stopped");
+  await page.evaluate(() => window.emit("Late unfinalized event", true, 0));
+  await expect(page.locator("#voiceDraft")).toHaveValue("Corrected while stopped");
+  await page.getByRole("button", { name: "Resume dictation" }).click();
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
+  await page.evaluate(() => window.emitRecognitionStart());
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  await page.evaluate(() => window.emit("Discard this"));
+  await page.waitForTimeout(2_900);
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(page.locator("#voiceDraft")).toBeHidden();
+  expect(sent).toEqual([]);
+});
+
+test("only onstart turns status green; stale events cannot interrupt recovery and fatal errors pause", async ({
   page,
 }) => {
-  const { messages, sent } = await prepareVoiceApp(page, {
-    onSend: async (route, { sessionID, text, messages: allMessages }) => {
-      allMessages[sessionID].push(
-        { id: "user-partial", role: "user", text },
-        {
-          id: "assistant-partial",
-          role: "assistant",
-          text: "Still composing",
-          completed: false,
-        },
+  const { errors } = await setup(page);
+  await page.evaluate(() => {
+    window.autoStart = 0;
+    window.autoEnd = 80;
+  });
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
+  await page.evaluate(() => window.emitRecognitionStart());
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  await page.evaluate(() => window.endRecognition());
+  await expect(page.locator("#voiceStatus")).not.toHaveAttribute("data-state", "listening");
+  await expect.poll(() => page.evaluate(() => window.recognizers.length)).toBe(2);
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.recognizers[0].onerror?.({ error: "network" }));
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  await page.evaluate(() => window.recognizers[1].onerror?.({ error: "network" }));
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "error");
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.recognizers.length)).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test("typed fallback sends explicitly and failures retain corrected draft without retry", async ({ page }) => {
+  const { sent } = await setup(page, {
+    onSend: (route) => route.fulfill({ status: 503, json: { error: "Unavailable" } }),
+  });
+  await page.getByText("Type instead", { exact: true }).click();
+  await page.locator("#prompt").fill("Typed instruction");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => sent.length).toBe(1);
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "error");
+  await expect(page.locator("#voiceDraft")).toHaveValue("Typed instruction");
+  await page.waitForTimeout(300);
+  expect(sent).toHaveLength(1);
+});
+
+test("partial assistant replies are not sent to TTS", async ({ page }) => {
+  const { sent, messages } = await setup(page, {
+    onSend: async (route, { id, text }) => {
+      messages[id].push(
+        { id: "partial-user", role: "user", text },
+        { id: "partial-assistant", role: "assistant", text: "Still composing", completed: false },
       );
       await route.fulfill({ status: 202, json: {} });
     },
   });
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await page.evaluate(() => window.emitVoice("Ask for an update"));
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Ask for partial reply"));
+  await page.waitForTimeout(2_900);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => sent.length).toBe(1);
-  await expect(page.getByText("Still composing")).toBeVisible();
-  await page.waitForTimeout(300);
-  expect(await page.evaluate(() => window.audioPlays || 0)).toBe(0);
-
-  messages["root-a"].push({
-    id: "assistant-final",
-    role: "assistant",
-    text: "Final answer.",
-    completed: true,
-    finish: "stop",
-  });
-  await expect(page.getByText("Final answer.")).toBeVisible({ timeout: 5_000 });
-  await expect.poll(() => page.evaluate(() => window.audioPlays)).toBe(1);
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.plays || 0)).toBe(0);
+  expect(sent).toHaveLength(1);
 });
 
-test("stopping while TTS is pending prevents playback and stale state updates", async ({
-  page,
-}) => {
+test("pending TTS cancellation prevents playback after voice mode stops", async ({ page }) => {
   let releaseTts;
-  let interceptedTts = false;
-  await prepareVoiceApp(page, {
-    onTts: async (route) => {
-      interceptedTts = true;
-      await new Promise((resolve) => {
+  let ttsRequested = false;
+  const { sent } = await setup(page, {
+    onTts: (route) =>
+      new Promise((resolve) => {
+        ttsRequested = true;
         releaseTts = async () => {
-          await route.fulfill({
-            status: 200,
-            contentType: "audio/mpeg",
-            body: "audio",
-          });
+          await route.fulfill({ status: 200, contentType: "audio/mpeg", body: "audio" });
           resolve();
         };
-      });
-    },
+      }),
   });
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await page.evaluate(() => window.emitVoice("Play a response"));
-  await expect.poll(() => interceptedTts).toBe(true);
-  await page.getByRole("button", { name: /Stop listening/ }).click();
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Ask for a reply"));
+  await page.waitForTimeout(2_900);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => ttsRequested).toBe(true);
+  await page.getByRole("button", { name: "Stop voice" }).click();
   await releaseTts();
   await page.waitForTimeout(100);
-  expect(await page.evaluate(() => window.audioPlays || 0)).toBe(0);
-  await expect(page.locator("#voiceStatus")).toContainText("Hands-free paused");
-  await expect(
-    page.getByRole("button", { name: /Start hands-free/ }),
-  ).toHaveAttribute("aria-pressed", "false");
-});
-
-test("send errors pause hands-free without retrying", async ({ page }) => {
-  const { sent } = await prepareVoiceApp(page, {
-    onSend: (route) =>
-      route.fulfill({ status: 503, json: { error: "Unavailable" } }),
-  });
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await page.evaluate(() => window.emitVoice("Send once"));
-  await expect.poll(() => sent.length).toBe(1);
-  await expect(page.locator("#voiceStatus")).toContainText(
-    "Message not sent: Unavailable",
-  );
-  await expect(
-    page.getByRole("button", { name: /Start hands-free/ }),
-  ).toHaveAttribute("aria-pressed", "false");
-  await page.waitForTimeout(1_500);
+  expect(await page.evaluate(() => window.plays || 0)).toBe(0);
   expect(sent).toHaveLength(1);
-  expect(await page.evaluate(() => window.recognitionStarts)).toBe(1);
 });
 
-test("assistant turn failures are surfaced without speaking or retrying", async ({
-  page,
-}) => {
-  const { sent } = await prepareVoiceApp(page, {
-    onSend: async (route, { sessionID, text, messages }) => {
-      messages[sessionID].push(
-        { id: "failed-user", role: "user", text },
-        {
-          id: "failed-assistant",
-          role: "assistant",
-          text: "Partial failed output",
-          completed: true,
-          finish: "error",
-        },
-      );
-      await route.fulfill({ status: 202, json: {} });
-    },
-  });
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await page.evaluate(() => window.emitVoice("Ask and fail"));
-  await expect.poll(() => sent.length).toBe(1);
-  await expect(page.locator("#voiceStatus")).toContainText(
-    "The assistant could not complete that reply.",
-  );
-  expect(await page.evaluate(() => window.audioPlays || 0)).toBe(0);
-  expect(await page.evaluate(() => window.recognitionStarts)).toBe(1);
-});
-
-test("switching sessions cancels a pending dictated send", async ({ page }) => {
-  const { sent } = await prepareVoiceApp(page, {
-    sessions: [
-      { id: "root-a", title: "Project A", directory: "/a", status: "idle" },
-      { id: "root-b", title: "Project B", directory: "/b", status: "idle" },
-    ],
-  });
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await page.evaluate(() => window.emitVoice("Do not send after switch"));
+test("session switch clears draft and isolates stale events", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Switch must clear me"));
+  await page.waitForTimeout(2_900);
   await page.getByText("Switch", { exact: true }).click();
   await page.getByRole("button", { name: /Project B/ }).click();
-  await page.evaluate(() =>
-    window.emitVoice("Late result from the stopped microphone"),
-  );
-  await page.waitForTimeout(1_500);
-  expect(sent).toHaveLength(0);
+  await expect(page.locator("#voiceDraft")).toBeHidden();
+  await page.evaluate(() => window.emit("Stale result", true, 0));
+  await expect(page.locator("#voiceDraft")).toBeHidden();
+  expect(sent).toEqual([]);
+});
+
+test("a disappeared session never transfers its draft to the replacement", async ({ page }) => {
+  const { sent, sessions } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Only for project A"));
+  await expect(page.locator("#voiceDraft")).toBeVisible();
+  sessions.shift();
   await expect(page.locator("#sessionTitle")).toHaveText("Project B");
-  await expect(
-    page.getByRole("button", { name: /Start hands-free/ }),
-  ).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#draftPanel")).toBeHidden();
+  await expect(page.locator("#voiceDraft")).toHaveValue("");
+  await page.evaluate(() => window.emit("Stale words for A", true, 0));
+  expect(sent).toEqual([]);
+  await expect(page.locator("#voice")).toHaveAttribute("data-state", "off");
 });
 
-test("TTS failure pauses without reopening the microphone", async ({
-  page,
-}) => {
-  await prepareVoiceApp(page, {
-    onTts: (route) =>
-      route.fulfill({ status: 502, json: { error: "Speech unavailable" } }),
-  });
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await page.evaluate(() => window.emitVoice("Please reply"));
-  await expect(page.locator("#voiceStatus")).toContainText(
-    "Could not play reply",
-  );
-  await expect(
-    page.getByRole("button", { name: /Start hands-free/ }),
-  ).toHaveAttribute("aria-pressed", "false");
-  expect(await page.evaluate(() => window.recognitionStarts)).toBe(1);
-});
-
-test("a response arriving after a session switch cannot overwrite the new history", async ({
-  page,
-}) => {
-  let finishSend;
-  let sendStarted = false;
-  const { sent, messages } = await prepareVoiceApp(page, {
-    sessions: [
-      { id: "root-a", title: "Project A", directory: "/a", status: "idle" },
-      { id: "root-b", title: "Project B", directory: "/b", status: "idle" },
-    ],
-    onSend: async (route) => {
-      sendStarted = true;
-      await new Promise((resolve) => {
-        finishSend = async () => {
-          await route.fulfill({ status: 202, json: {} });
-          resolve();
-        };
-      });
+test("send and TTS delays show non-listening states and disable duplicate confirmation", async ({ page }) => {
+  let sendRoute;
+  let ttsRoute;
+  const { sent, messages } = await setup(page, {
+    onSend: (route) => {
+      sendRoute = route;
+    },
+    onTts: (route) => {
+      ttsRoute = route;
     },
   });
-  messages["root-b"].push({
-    id: "history-b",
-    role: "assistant",
-    text: "History for project B.",
-    completed: true,
-    finish: "stop",
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Ready to send"));
+  await expect(page.locator("#voiceDraft")).toBeVisible();
+  await page.locator("#sendDraft").click();
+  await expect.poll(() => Boolean(sendRoute)).toBe(true);
+  await expect(page.locator("#voice")).toHaveAttribute("data-state", "waiting");
+  await expect(page.locator("#sendDraft")).toBeDisabled();
+  messages.a.push({ id: "answer", role: "assistant", text: "A complete response", completed: true, finish: "stop" });
+  await sendRoute.fulfill({ status: 202, json: {} });
+  await expect.poll(() => Boolean(ttsRoute)).toBe(true);
+  await expect(page.locator("#voice")).toHaveAttribute("data-state", "speaking");
+  expect(sent).toHaveLength(1);
+  await ttsRoute.fulfill({ status: 502, json: { error: "Speech unavailable" } });
+  await expect(page.locator("#voice")).toHaveAttribute("data-state", "error");
+  await expect(page.getByRole("button", { name: "Start hands-free" })).toBeVisible();
+});
+
+test("late final results improve the draft before review and edits survive subsequent stop", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("unfinal words", false));
+  await page.evaluate(() => {
+    window.recognition.stop = function () {
+      setTimeout(() => window.emit("Final corrected words"), 10);
+      setTimeout(() => this.onend?.(), 30);
+    };
   });
-  await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await page.evaluate(() => window.emitVoice("Wait for project A"));
-  await expect.poll(() => sendStarted).toBe(true);
+  await expect(page.locator("#voiceDraft")).toHaveValue("Final corrected words");
+  await page.locator("#voiceDraft").fill("My own correction");
+  await page.getByRole("button", { name: "Stop voice" }).click();
+  await expect(page.locator("#voiceDraft")).toHaveValue("My own correction");
+  expect(sent).toEqual([]);
+});
+
+test("unchanged polling preserves conversation nodes and a focused session option", async ({ page }) => {
+  await setup(page);
+  await page.getByText("Switch", { exact: true }).click();
+  await page.getByRole("button", { name: /Project B/ }).focus();
+  await page.evaluate(() => {
+    window.originalOption = document.activeElement;
+    window.originalMessage = document.querySelector("#conversation").firstElementChild;
+  });
+  await page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/messages"));
+  expect(
+    await page.evaluate(
+      () =>
+        document.activeElement === window.originalOption &&
+        document.querySelector("#conversation").firstElementChild === window.originalMessage,
+    ),
+  ).toBe(true);
+});
+
+test("a send response arriving after switching sessions cannot clear or speak another session", async ({ page }) => {
+  let pending;
+  const { sent } = await setup(page, {
+    onSend: (route) => {
+      pending = route;
+    },
+  });
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Instruction for A"));
+  await expect(page.locator("#voiceDraft")).toBeVisible();
+  await page.locator("#sendDraft").click();
+  await expect.poll(() => Boolean(pending)).toBe(true);
   await page.getByText("Switch", { exact: true }).click();
   await page.getByRole("button", { name: /Project B/ }).click();
-  await expect(page.getByText("History for project B.")).toBeVisible();
-  await finishSend();
-  await page.waitForTimeout(150);
-  await expect(page.locator("#sessionTitle")).toHaveText("Project B");
-  await expect(page.getByText("Wait for project A")).toHaveCount(0);
-  expect(await page.evaluate(() => window.audioPlays || 0)).toBe(0);
-  expect(sent).toEqual([{ sessionID: "root-a", text: "Wait for project A" }]);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emit("Private draft for B"));
+  await expect(page.locator("#voiceDraft")).toHaveValue("Private draft for B");
+  await pending.fulfill({ status: 202, json: {} });
+  await page.waitForTimeout(100);
+  await expect(page.locator("#voiceDraft")).toHaveValue("Private draft for B");
+  expect(sent).toEqual([{ id: "a", text: "Instruction for A" }]);
+  expect(await page.evaluate(() => window.plays || 0)).toBe(0);
 });

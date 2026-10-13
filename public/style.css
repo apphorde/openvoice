@@ -17,8 +17,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
-  background:
-    radial-gradient(ellipse at 50% 30%, #17231b 0, transparent 55%), var(--bg);
+  background: radial-gradient(ellipse at 50% 30%, #17231b 0, transparent 55%), var(--bg);
   color: var(--white);
   font:
     15px Manrope,
@@ -39,8 +38,7 @@ button {
   width: min(100%, 800px);
   min-height: 100dvh;
   margin: auto;
-  padding: max(14px, env(safe-area-inset-top)) 18px
-    max(18px, env(safe-area-inset-bottom));
+  padding: max(14px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
 }
@@ -249,6 +247,19 @@ select:focus-visible {
   color: var(--mint);
   font-size: 13px;
 }
+.voice-status[data-state="off"] {
+  color: var(--muted);
+}
+.voice-status[data-state="review"] {
+  color: #e4b96d;
+}
+.voice-status[data-state="error"] {
+  color: #ff9b91;
+}
+.voice-status[data-state="starting"],
+.voice-status[data-state="waiting"] {
+  color: #aab4ad;
+}
 .transcript-preview {
   min-height: 20px;
   max-width: 560px;
@@ -288,10 +299,27 @@ select:focus-visible {
 .voice-button.active {
   animation: pulse 2s infinite;
 }
+.voice-button:not(.listening),
+.voice-button[data-state="starting"],
+.voice-button[data-state="waiting"],
+.voice-button[data-state="review"],
+.voice-button[data-state="off"],
+.voice-button[data-state="error"] {
+  color: #e4e9e5;
+  border-color: #59645c;
+  background: #303832;
+  box-shadow: none;
+}
+.voice-button.listening {
+  color: #14210f;
+  border-color: #c5f190;
+  background: linear-gradient(145deg, #d2f5a8, #b5e887);
+}
 .voice-button.speaking {
-  background: #d1dbd2;
-  border-color: #d1dbd2;
-  box-shadow: 0 0 0 8px #d1dbd220;
+  color: #15202d;
+  background: #b7cde6;
+  border-color: #b7cde6;
+  box-shadow: 0 0 0 8px #b7cde620;
 }
 .mic-icon {
   width: 27px;
@@ -302,6 +330,53 @@ select:focus-visible {
   max-width: 310px;
   line-height: 1.45;
   margin: 11px 0 0;
+}
+.draft-panel {
+  width: min(100%, 560px);
+  padding: 14px;
+  margin: 0 0 14px;
+  border: 1px solid #80683f;
+  border-radius: 12px;
+  background: #211d15;
+  text-align: left;
+}
+.draft-panel label {
+  color: #f0d19a;
+  font-size: 13px;
+  font-weight: 700;
+}
+.draft-panel textarea {
+  display: block;
+  margin-top: 8px;
+  resize: vertical;
+}
+#draftHint {
+  margin: 7px 0;
+  color: #d0b782;
+  font-size: 11px;
+}
+.draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.draft-actions button {
+  min-height: 40px;
+  padding: 0 13px;
+  border-radius: 8px;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+#sendDraft {
+  border: 0;
+  background: var(--mint);
+  color: #13200d;
+  font-weight: 700;
+}
+.draft-actions .quiet {
+  min-width: 0;
 }
 .secondary-panel {
   margin-top: 9px;

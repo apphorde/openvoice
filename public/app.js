@@ -5,6 +5,8 @@ const voiceLabel = document.querySelector("#voiceLabel");
 const voiceStatus = document.querySelector("#voiceStatus");
 const transcriptPreview = document.querySelector("#transcriptPreview");
 const player = document.querySelector("#player");
+const draftPanel = document.querySelector("#draftPanel");
+const voiceDraft = document.querySelector("#voiceDraft");
 
 let sessions = [];
 let goals = [];
@@ -18,22 +20,28 @@ let sending = false;
 let speaking = false;
 let waitingForReply = false;
 let utterance = "";
+let interimTranscript = "";
+let draftSession = null;
+let recognitionStarting = false;
+let sessionsRequest = false;
+let sessionSignature = "";
+let messageSignature = "";
 let sendTimer;
 let restartTimer;
 let replyTimer;
 let replyStartedAt = 0;
 let messageRequest = 0;
+let sendRequest = 0;
+let reviewPending = false;
+let reviewTimer;
+let microphoneTimer;
 let voiceGeneration = 0;
 let activePlaybackCancel;
 let seenMessages = new Set();
 
 async function request(path, options) {
   const response = await fetch(path, { cache: "no-store", ...options });
-  const data = response.headers
-    .get("content-type")
-    ?.includes("application/json")
-    ? await response.json()
-    : null;
+  const data = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
     throw new Error(data?.error || `Request failed (${response.status})`);
   }
@@ -49,8 +57,109 @@ function messageDate(value) {
     : "";
 }
 
-function showStatus(text) {
+function showStatus(text, state) {
   voiceStatus.textContent = text;
+  state ||= speaking
+    ? "speaking"
+    : sending || waitingForReply
+      ? "waiting"
+      : listening
+        ? "listening"
+        : recognitionStarting
+          ? "starting"
+          : !draftPanel.hidden
+            ? "review"
+            : "off";
+  voiceStatus.dataset.state = state;
+  voiceButton.dataset.state = state;
+  voiceButton.classList.toggle("active", state === "listening");
+  voiceButton.classList.toggle("speaking", state === "speaking");
+  voiceButton.classList.toggle("listening", state === "listening");
+  voiceButton.classList.toggle("voice-on", voiceMode);
+  voiceButton.setAttribute("aria-pressed", String(voiceMode));
+  voiceLabel.textContent = voiceMode ? "Stop voice" : "Start hands-free";
+  document.querySelector("#sendDraft").disabled = sending || waitingForReply || speaking || !voiceDraft.value.trim();
+  document.querySelector("#resumeVoice").disabled = sending || waitingForReply || speaking;
+  document.querySelector("#discardDraft").disabled = sending;
+  document.querySelector("#send").disabled = sending || waitingForReply || speaking;
+}
+
+function updateTranscript() {
+  transcriptPreview.textContent = [utterance, interimTranscript].filter(Boolean).join(" ");
+}
+
+function showDraft() {
+  clearTimeout(sendTimer);
+  clearTimeout(reviewTimer);
+  sendTimer = undefined;
+  reviewPending = false;
+  if (interimTranscript) {
+    utterance = `${utterance} ${interimTranscript}`.trim();
+    interimTranscript = "";
+  }
+  updateTranscript();
+  if (!utterance.trim()) {
+    return;
+  }
+  if (draftPanel.hidden || draftSession !== selected) {
+    draftSession = selected;
+    voiceDraft.value = utterance.trim();
+  }
+  draftPanel.hidden = false;
+  stopCapture();
+  listening = false;
+  transcriptPreview.textContent = "";
+  showStatus("Review your draft — microphone off");
+}
+
+function resumeDictation() {
+  if (draftSession !== selected || sending || waitingForReply || speaking) {
+    return;
+  }
+  voiceMode = true;
+  utterance = voiceDraft.value.trim();
+  interimTranscript = "";
+  draftPanel.hidden = true;
+  updateTranscript();
+  startRecognition();
+}
+
+function clearDraft() {
+  clearTimeout(sendTimer);
+  clearTimeout(reviewTimer);
+  sendTimer = undefined;
+  reviewPending = false;
+  draftSession = null;
+  draftPanel.hidden = true;
+  voiceDraft.value = "";
+  utterance = "";
+  interimTranscript = "";
+  updateTranscript();
+}
+
+function stopCapture() {
+  const current = recognition;
+  recognition = null;
+  recognitionStarting = false;
+  listening = false;
+  clearTimeout(microphoneTimer);
+  try {
+    current?.stop();
+  } catch {
+    // Chrome may already have closed the capture device.
+  }
+}
+
+function requestReview() {
+  sendTimer = undefined;
+  if (!voiceMode || !draftPanel.hidden || sending || waitingForReply || speaking) {
+    return;
+  }
+  reviewPending = true;
+  listening = false;
+  showStatus("Finishing your draft — microphone off", "review");
+  reviewTimer = setTimeout(showDraft, 750);
+  recognition?.stop();
 }
 
 function messageKey(message) {
@@ -58,6 +167,13 @@ function messageKey(message) {
 }
 
 function renderSessions() {
+  const signature = JSON.stringify(
+    sessions.map(({ id, title, directory, status }) => ({ id, title, directory, status, selected: id === selected })),
+  );
+  if (signature === sessionSignature) {
+    return;
+  }
+  sessionSignature = signature;
   list.replaceChildren();
   for (const session of sessions) {
     const button = document.createElement("button");
@@ -66,8 +182,7 @@ function renderSessions() {
     button.type = "button";
     button.className = `session-option${session.id === selected ? " selected" : ""}`;
     name.textContent = session.title;
-    state.textContent =
-      session.status === "running" ? "Working" : session.directory || "";
+    state.textContent = session.status === "running" ? "Working" : session.directory || "";
     button.append(name, state);
     button.addEventListener("click", () => selectSession(session.id));
     list.append(button);
@@ -75,19 +190,18 @@ function renderSessions() {
 }
 
 function renderMessages() {
+  const signature = JSON.stringify([selected, messages]);
+  if (signature === messageSignature) {
+    return;
+  }
+  messageSignature = signature;
   const previousScroll = conversation.scrollTop;
-  const nearBottom =
-    conversation.scrollHeight -
-      conversation.scrollTop -
-      conversation.clientHeight <
-    120;
+  const nearBottom = conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight < 120;
   conversation.replaceChildren();
   if (messages.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = selected
-      ? "No messages in this session yet."
-      : "Choose a session to begin.";
+    empty.textContent = selected ? "No messages in this session yet." : "Choose a session to begin.";
     conversation.append(empty);
     return;
   }
@@ -120,9 +234,7 @@ async function loadMessages() {
   const requestID = ++messageRequest;
   try {
     const sessionID = selected;
-    const { data } = await request(
-      `/api/sessions/${encodeURIComponent(sessionID)}/messages?limit=40`,
-    );
+    const { data } = await request(`/api/sessions/${encodeURIComponent(sessionID)}/messages?limit=40`);
     if (requestID !== messageRequest || sessionID !== selected) {
       return;
     }
@@ -138,27 +250,34 @@ async function loadMessages() {
 }
 
 async function refreshSessions() {
+  if (sessionsRequest) {
+    return;
+  }
+  sessionsRequest = true;
   try {
     const { data } = await request("/api/sessions");
     sessions = data.sessions || [];
     const previous = selected;
     if (!selected || !sessions.some((session) => session.id === selected)) {
       const saved = localStorage.getItem("openvoice.session");
-      selected = sessions.some((session) => session.id === saved)
-        ? saved
-        : sessions[0]?.id || null;
+      const next = sessions.some((session) => session.id === saved) ? saved : sessions[0]?.id || null;
+      if (previous !== next) {
+        stopVoice(previous ? "Session changed. Tap to continue." : "Microphone off — tap to start", {
+          preserveDraft: false,
+        });
+        sendRequest++;
+        sending = false;
+        selected = next;
+        showStatus(voiceStatus.textContent);
+      }
     }
     renderSessions();
     const session = sessions.find((item) => item.id === selected);
-    document.querySelector("#sessionTitle").textContent =
-      session?.title || "No sessions found";
+    document.querySelector("#sessionTitle").textContent = session?.title || "No sessions found";
     document.querySelector("#sessionMeta").textContent = session
       ? `${session.status === "running" ? "Working" : "Ready"} · ${sessions.length} sessions`
       : data.error || "OpenCode is unavailable";
     if (previous !== selected) {
-      if (previous !== null) {
-        stopVoice("Session changed. Tap to continue.");
-      }
       localStorage.setItem("openvoice.session", selected || "");
       historySession = null;
       messages = [];
@@ -169,14 +288,18 @@ async function refreshSessions() {
     }
     await maybeReadReply();
   } catch {
-    document.querySelector("#sessionMeta").textContent =
-      "Connection unavailable";
+    document.querySelector("#sessionMeta").textContent = "Connection unavailable";
+  } finally {
+    sessionsRequest = false;
   }
 }
 
 async function selectSession(id) {
-  stopVoice(voiceMode ? "Session changed. Tap to continue." : "Ready");
+  stopVoice(voiceMode ? "Session changed. Tap to continue." : "Microphone off", { preserveDraft: false });
+  sendRequest++;
+  sending = false;
   selected = id;
+  showStatus("Microphone off");
   historySession = null;
   messages = [];
   renderMessages();
@@ -184,8 +307,7 @@ async function selectSession(id) {
   document.querySelector("#sessionPicker").open = false;
   renderSessions();
   const session = sessions.find((item) => item.id === selected);
-  document.querySelector("#sessionTitle").textContent =
-    session?.title || "Session";
+  document.querySelector("#sessionTitle").textContent = session?.title || "Session";
   document.querySelector("#sessionMeta").textContent = session?.directory || "";
   waitingForReply = false;
   clearTimeout(replyTimer);
@@ -194,9 +316,7 @@ async function selectSession(id) {
 
 function splitForSpeech(text, maxLength = 900) {
   const chunks = [];
-  let remaining = text
-    .replace(/```[\s\S]*?```/g, "Code omitted from spoken reply.")
-    .trim();
+  let remaining = text.replace(/```[\s\S]*?```/g, "Code omitted from spoken reply.").trim();
   while (remaining.length > maxLength) {
     let end = remaining.lastIndexOf(". ", maxLength);
     if (end < maxLength * 0.55) {
@@ -221,9 +341,7 @@ async function speak(text) {
     return;
   }
   speaking = true;
-  listening = false;
-  recognition?.stop();
-  voiceButton.classList.add("speaking");
+  stopCapture();
   showStatus("Speaking…");
   try {
     for (const chunk of chunks) {
@@ -258,8 +376,7 @@ async function speak(text) {
             callback();
           };
           player.onended = () => finish(resolve);
-          player.onerror = () =>
-            finish(() => reject(new Error("Audio playback failed")));
+          player.onerror = () => finish(() => reject(new Error("Audio playback failed")));
           activePlaybackCancel = () => finish(resolve);
           player.play().catch((error) => finish(() => reject(error)));
         });
@@ -272,12 +389,11 @@ async function speak(text) {
     }
   } catch (error) {
     if (generation === voiceGeneration) {
-      stopVoice(`Could not play reply: ${error.message}`);
+      stopVoice(`Could not play reply: ${error.message}`, { error: true });
     }
   } finally {
     if (generation === voiceGeneration) {
       speaking = false;
-      voiceButton.classList.remove("speaking");
       if (voiceMode) {
         showStatus("Your turn — speak when ready");
         startRecognition();
@@ -309,7 +425,7 @@ async function maybeReadReply() {
     waitingForReply = false;
     clearTimeout(replyTimer);
     if (voiceMode) {
-      stopVoice("The assistant could not complete that reply.");
+      stopVoice("The assistant could not complete that reply.", { error: true });
     } else {
       showStatus("The assistant could not complete that reply.");
     }
@@ -329,12 +445,11 @@ async function maybeReadReply() {
     seenMessages.add(messageKey(latest));
     waitingForReply = false;
     clearTimeout(replyTimer);
-    await speak(latest.text);
+    void speak(latest.text);
     return;
   }
   if (Date.now() - replyStartedAt > 5 * 60_000) {
-    waitingForReply = false;
-    showStatus("No reply yet. You can try again.");
+    stopVoice("No reply yet. Check the conversation before sending again.", { error: true });
     return;
   }
   showStatus("Waiting for the session…");
@@ -342,25 +457,21 @@ async function maybeReadReply() {
 
 async function sendMessage(text) {
   const message = text.trim();
-  if (
-    !selected ||
-    historySession !== selected ||
-    !message ||
-    sending ||
-    waitingForReply ||
-    speaking
-  ) {
+  if (!selected || historySession !== selected || !message || sending || waitingForReply || speaking) {
     return;
   }
   const generation = voiceGeneration;
+  const sessionID = selected;
+  const requestID = ++sendRequest;
+  if (draftPanel.hidden === false && draftSession !== sessionID) {
+    return;
+  }
   sending = true;
   clearTimeout(sendTimer);
   sendTimer = undefined;
-  listening = false;
-  recognition?.stop();
+  stopCapture();
   waitingForReply = true;
   replyStartedAt = Date.now();
-  const sessionID = selected;
   seenMessages = new Set(messages.map(messageKey));
   showStatus("Sending…");
   try {
@@ -369,11 +480,11 @@ async function sendMessage(text) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: message }),
     });
-    if (generation !== voiceGeneration || selected !== sessionID) {
+    if (requestID !== sendRequest || selected !== sessionID) {
       return;
     }
-    utterance = "";
-    transcriptPreview.textContent = "";
+    sending = false;
+    clearDraft();
     document.querySelector("#prompt").value = "";
     await loadMessages();
     if (generation !== voiceGeneration || selected !== sessionID) {
@@ -389,20 +500,26 @@ async function sendMessage(text) {
     clearTimeout(replyTimer);
     replyTimer = setTimeout(() => {
       if (waitingForReply) {
-        waitingForReply = false;
-        showStatus("No reply yet. You can try again.");
-        if (voiceMode) {
-          startRecognition();
-        }
+        stopVoice("No reply yet. Check the conversation before sending again.", { error: true });
       }
     }, 5 * 60_000);
   } catch (error) {
     if (generation === voiceGeneration && selected === sessionID) {
-      stopVoice(`Message not sent: ${error.message}`);
+      sending = false;
+      waitingForReply = false;
+      voiceDraft.value = message;
+      utterance = message;
+      interimTranscript = "";
+      draftSession = sessionID;
+      draftPanel.hidden = false;
+      stopVoice(`Message not sent: ${error.message}. Draft preserved.`, { error: true });
+    } else if (requestID === sendRequest && selected === sessionID) {
+      showStatus(`Message not sent: ${error.message}. Check your draft.`, "error");
     }
   } finally {
-    if (generation === voiceGeneration) {
+    if (requestID === sendRequest && selected === sessionID) {
       sending = false;
+      showStatus(voiceStatus.textContent, voiceStatus.dataset.state === "error" ? "error" : undefined);
     }
     if (generation === voiceGeneration && voiceMode && !waitingForReply) {
       startRecognition();
@@ -415,6 +532,8 @@ function startRecognition() {
   if (
     !voiceMode ||
     listening ||
+    recognitionStarting ||
+    !draftPanel.hidden ||
     sending ||
     speaking ||
     waitingForReply ||
@@ -425,58 +544,52 @@ function startRecognition() {
   recognition = new SpeechApi();
   const currentRecognition = recognition;
   const generation = voiceGeneration;
+  const recognitionSession = selected;
+  const base = utterance;
   const isCurrent = () =>
     voiceMode &&
     generation === voiceGeneration &&
+    selected === recognitionSession &&
     recognition === currentRecognition;
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.onresult = (event) => {
-    if (!isCurrent() || sending || waitingForReply || speaking) {
+    if (!isCurrent() || !draftPanel.hidden || sending || waitingForReply || speaking) {
       return;
     }
-    let interim = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
+    const final = [];
+    const interim = [];
+    for (let i = 0; i < event.results.length; i++) {
       const result = event.results[i];
       const text = result[0]?.transcript?.trim();
       if (!text) {
         continue;
       }
       if (result.isFinal) {
-        utterance = `${utterance} ${text}`.trim();
-        clearTimeout(sendTimer);
-        sendTimer = setTimeout(() => {
-          sendTimer = undefined;
-          sendMessage(utterance);
-        }, 1300);
+        final.push(text);
       } else {
-        interim += `${text} `;
+        interim.push(text);
       }
     }
-    if (interim.trim() && sendTimer) {
+    utterance = [base, ...final].filter(Boolean).join(" ");
+    interimTranscript = interim.join(" ");
+    updateTranscript();
+    if ((utterance || interimTranscript) && !reviewPending) {
       clearTimeout(sendTimer);
-      sendTimer = undefined;
-    }
-    transcriptPreview.textContent = [utterance, interim.trim()]
-      .filter(Boolean)
-      .join(" ");
-    if (utterance) {
-      showStatus("Pause when you’re finished; I’ll send it.");
+      sendTimer = setTimeout(requestReview, 2800);
+      showStatus(listening ? "Listening — pause to review your draft" : "Starting microphone…");
     }
   };
   recognition.onerror = (event) => {
     if (!isCurrent()) {
       return;
     }
-    if (
-      event.error === "not-allowed" ||
-      event.error === "service-not-allowed"
-    ) {
-      stopVoice("Microphone permission is needed for hands-free voice.");
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      stopVoice("Microphone permission is needed for hands-free voice.", { error: true });
       return;
     }
     if (event.error !== "no-speech" && event.error !== "aborted") {
-      stopVoice(`Voice recognition failed: ${event.error}. Tap to retry.`);
+      stopVoice(`Voice recognition failed: ${event.error}. Tap to retry.`, { error: true });
     }
   };
   recognition.onend = () => {
@@ -484,56 +597,81 @@ function startRecognition() {
       return;
     }
     listening = false;
-    if (
-      voiceMode &&
-      !sending &&
-      !speaking &&
-      !waitingForReply &&
-      !sendTimer &&
-      !utterance
-    ) {
+    recognitionStarting = false;
+    recognition = null;
+    clearTimeout(microphoneTimer);
+    if (utterance || interimTranscript) {
+      showDraft();
+    } else if (voiceMode && !sending && !speaking && !waitingForReply && draftPanel.hidden) {
+      clearTimeout(sendTimer);
+      sendTimer = undefined;
       clearTimeout(restartTimer);
+      showStatus("Microphone stopped — reconnecting…", "starting");
       restartTimer = setTimeout(startRecognition, 300);
+    } else {
+      showStatus("Microphone off");
     }
   };
-  try {
-    recognition.start();
+  currentRecognition.onstart = () => {
+    if (!isCurrent() || reviewPending || !draftPanel.hidden) {
+      return;
+    }
+    clearTimeout(microphoneTimer);
+    recognitionStarting = false;
     listening = true;
-    showStatus(utterance ? "Listening…" : "Listening — speak naturally");
+    showStatus("Listening — speak naturally");
+  };
+  try {
+    recognitionStarting = true;
+    showStatus("Starting microphone…");
+    microphoneTimer = setTimeout(() => {
+      if (isCurrent() && recognitionStarting) {
+        stopVoice("Microphone did not start. Check Chrome’s microphone permission and input device.", { error: true });
+      }
+    }, 10000);
+    recognition.start();
   } catch {
-    stopVoice("Could not start the microphone. Tap to retry.");
+    stopVoice("Could not start the microphone. Tap to retry.", { error: true });
   }
 }
 
-function stopVoice(message = "Hands-free paused") {
+function stopVoice(message = "Microphone off — voice paused", { preserveDraft = true, error = false } = {}) {
   voiceGeneration++;
   activePlaybackCancel?.();
   activePlaybackCancel = null;
   voiceMode = false;
   listening = false;
-  sending = false;
   speaking = false;
   waitingForReply = false;
   clearTimeout(sendTimer);
   clearTimeout(restartTimer);
   clearTimeout(replyTimer);
+  clearTimeout(reviewTimer);
   sendTimer = undefined;
   restartTimer = undefined;
   replyTimer = undefined;
-  recognition?.stop();
+  stopCapture();
   player.pause();
   player.removeAttribute("src");
   voiceButton.classList.remove("active", "speaking");
   voiceButton.setAttribute("aria-pressed", "false");
   voiceLabel.textContent = "Start hands-free";
-  transcriptPreview.textContent = "";
-  utterance = "";
-  showStatus(message);
+  recognitionStarting = false;
+  if (!preserveDraft) {
+    clearDraft();
+  } else if (draftPanel.hidden && (utterance || interimTranscript)) {
+    showDraft();
+  }
+  showStatus(message, error ? "error" : undefined);
 }
 
 voiceButton.addEventListener("click", () => {
   if (voiceMode) {
     stopVoice();
+    return;
+  }
+  if (sending || waitingForReply || speaking) {
+    showStatus("Finishing the current request — microphone off");
     return;
   }
   if (!selected) {
@@ -551,11 +689,32 @@ voiceButton.addEventListener("click", () => {
   }
   voiceMode = true;
   seenMessages = new Set(messages.map(messageKey));
-  voiceButton.classList.add("active");
-  voiceButton.setAttribute("aria-pressed", "true");
-  voiceLabel.textContent = "Stop listening";
-  showStatus("Starting microphone…");
-  startRecognition();
+  if (!draftPanel.hidden) {
+    resumeDictation();
+  } else {
+    startRecognition();
+  }
+});
+
+document.querySelector("#sendDraft").addEventListener("click", () => {
+  if (draftSession === selected) {
+    sendMessage(voiceDraft.value);
+  }
+});
+voiceDraft.addEventListener("input", () => {
+  showStatus(voiceStatus.textContent, voiceStatus.dataset.state);
+});
+document.querySelector("#resumeVoice").addEventListener("click", resumeDictation);
+document.querySelector("#discardDraft").addEventListener("click", () => {
+  if (sending) {
+    return;
+  }
+  clearDraft();
+  if (voiceMode) {
+    startRecognition();
+  } else {
+    showStatus("Draft discarded — microphone off");
+  }
 });
 
 document.querySelector("#refresh").addEventListener("click", refreshSessions);
@@ -568,9 +727,7 @@ async function loadGoals() {
   try {
     const { data } = await request("/api/goals");
     goals = data;
-    document.querySelector("#goalCount").textContent = goals.length
-      ? `(${goals.length})`
-      : "(none yet)";
+    document.querySelector("#goalCount").textContent = goals.length ? `(${goals.length})` : "(none yet)";
     const target = document.querySelector("#goals");
     target.replaceChildren();
     for (const goal of goals) {
@@ -579,9 +736,7 @@ async function loadGoals() {
       const status = document.createElement("select");
       const remove = document.createElement("button");
       row.className = "goal-row";
-      text.textContent = goal.description
-        ? `${goal.title} — ${goal.description}`
-        : goal.title;
+      text.textContent = goal.description ? `${goal.title} — ${goal.description}` : goal.title;
       for (const value of ["open", "in-progress", "done"]) {
         const option = document.createElement("option");
         option.value = value;
@@ -589,9 +744,7 @@ async function loadGoals() {
         option.selected = goal.status === value;
         status.append(option);
       }
-      status.addEventListener("change", () =>
-        updateGoal(goal.id, { status: status.value }),
-      );
+      status.addEventListener("change", () => updateGoal(goal.id, { status: status.value }));
       remove.type = "button";
       remove.className = "icon-button";
       remove.textContent = "×";
@@ -627,34 +780,27 @@ async function deleteGoal(id) {
   }
 }
 
-document
-  .querySelector("#goalForm")
-  .addEventListener("submit", async (event) => {
-    event.preventDefault();
-    try {
-      await request("/api/goals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: document.querySelector("#goalTitle").value,
-          description: document.querySelector("#goalDescription").value,
-        }),
-      });
-      document.querySelector("#goalForm").reset();
-      await loadGoals();
-    } catch (error) {
-      document.querySelector("#goalNotice").textContent = error.message;
-    }
-  });
+document.querySelector("#goalForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await request("/api/goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: document.querySelector("#goalTitle").value,
+        description: document.querySelector("#goalDescription").value,
+      }),
+    });
+    document.querySelector("#goalForm").reset();
+    await loadGoals();
+  } catch (error) {
+    document.querySelector("#goalNotice").textContent = error.message;
+  }
+});
 
 document.querySelector("#applyPlan").addEventListener("click", async () => {
   const sessionIds = sessions.map((session) => session.id);
-  if (
-    !sessionIds.length ||
-    !confirm(
-      `Send the current plan to all ${sessionIds.length} top-level sessions?`,
-    )
-  ) {
+  if (!sessionIds.length || !confirm(`Send the current plan to all ${sessionIds.length} top-level sessions?`)) {
     return;
   }
   try {
@@ -663,8 +809,7 @@ document.querySelector("#applyPlan").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionIds }),
     });
-    document.querySelector("#goalNotice").textContent =
-      `Sent to ${data.sent}; ${data.failed} failed.`;
+    document.querySelector("#goalNotice").textContent = `Sent to ${data.sent}; ${data.failed} failed.`;
   } catch (error) {
     document.querySelector("#goalNotice").textContent = error.message;
   }

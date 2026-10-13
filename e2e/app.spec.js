@@ -7,14 +7,9 @@ async function authenticate(context) {
   const jar = await readFile(jarPath, "utf8");
   const cookieLine = jar
     .split("\n")
-    .find(
-      (line) =>
-        line.includes("auth.lab.apphor.de") && line.includes("connect.sid"),
-    );
+    .find((line) => line.includes("auth.lab.apphor.de") && line.includes("connect.sid"));
   if (!cookieLine) {
-    throw new Error(
-      "Auth Lab automation session cookie not found in cookie jar",
-    );
+    throw new Error("Auth Lab automation session cookie not found in cookie jar");
   }
   const [rawDomain, , path, secure, , name, value] = cookieLine.split("\t");
   const domain = rawDomain.replace(/^#HttpOnly_/, "");
@@ -31,10 +26,7 @@ async function authenticate(context) {
   ]);
 }
 
-test("OIDC login, authenticated PWA, goals, logout, and protected access", async ({
-  browser,
-  baseURL,
-}) => {
+test("OIDC login, authenticated PWA, goals, logout, and protected access", async ({ browser, baseURL }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
   });
@@ -42,6 +34,7 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
   await context.addInitScript(() => {
     window.SpeechRecognition = class {
       start() {
+        this.onstart?.();
         const alternatives = [{ transcript: "Check all project goals" }];
         const results = [alternatives];
         results.item = (index) => results[index];
@@ -101,9 +94,7 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
     });
   });
   await page.route("**/api/sessions/root-e2e/message", async (route) => {
-    expect(route.request().postDataJSON().text).toBe(
-      "Please summarize progress",
-    );
+    expect(route.request().postDataJSON().text).toBe("Please summarize progress");
     await route.fulfill({
       status: 202,
       contentType: "application/json",
@@ -117,38 +108,24 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
   await expect(page.locator("#goalsPanel")).not.toHaveAttribute("open", "");
   await page.getByText("Switch", { exact: true }).click();
   await page.getByRole("button", { name: /Executive cloud session/ }).click();
-  await expect(page.locator("#sessionTitle")).toHaveText(
-    "Executive cloud session",
-  );
+  await expect(page.locator("#sessionTitle")).toHaveText("Executive cloud session");
   await page.getByRole("button", { name: /Start hands-free/ }).click();
-  await expect(page.locator("#transcriptPreview")).toContainText(
-    "Check all project goals",
-  );
-  await page.getByRole("button", { name: /Stop listening/ }).click();
+  await expect(page.locator("#transcriptPreview")).toContainText("Check all project goals");
+  await page.getByRole("button", { name: /Stop voice/ }).click();
   await page.getByText("Type instead", { exact: true }).click();
-  await page
-    .getByPlaceholder("Write an instruction…")
-    .fill("Please summarize progress");
-  await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator("#voiceStatus")).toContainText(
-    "Waiting for the reply",
-  );
+  await page.getByPlaceholder("Write an instruction…").fill("Please summarize progress");
+  await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator("#voiceStatus")).toContainText("Waiting for the reply");
 
   await page.getByText(/Executive goals/).click();
   const title = `E2E goal ${Date.now()}`;
   await page.getByLabel("Goal", { exact: true }).fill(title);
-  await page
-    .getByLabel("Success criteria")
-    .fill("Verify cross-session plan storage");
+  await page.getByLabel("Success criteria").fill("Verify cross-session plan storage");
   await page.getByRole("button", { name: "Add goal" }).click();
   await expect(page.getByText(title)).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
-  await page
-    .getByRole("button", { name: "Send plan to all top-level sessions" })
-    .click();
-  await expect(page.locator("#goalNotice")).toContainText(
-    "Sent to 1; 0 failed.",
-  );
+  await page.getByRole("button", { name: "Send plan to all top-level sessions" }).click();
+  await expect(page.locator("#goalNotice")).toContainText("Sent to 1; 0 failed.");
   await page.screenshot({
     path: "/tmp/opencode/session-voice-mobile.png",
     fullPage: true,
