@@ -106,7 +106,7 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
   await expect(page).toHaveTitle(/OpenVoice/);
   await expect(page.getByText("Ready for instructions.")).toBeVisible();
   await expect(page.locator("#goalsPanel")).not.toHaveAttribute("open", "");
-  await page.getByText("Switch", { exact: true }).click();
+  await page.locator("#sessionTitle").click();
   await page.getByRole("button", { name: /Executive cloud session/ }).click();
   await expect(page.locator("#sessionTitle")).toHaveText("Executive cloud session");
   await page.getByRole("button", { name: /Start hands-free/ }).click();
@@ -117,7 +117,7 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
   await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator("#voiceStatus")).toContainText("Waiting for the reply");
 
-  await page.locator("#sessionPicker summary").click();
+  await page.locator("#sessionTitle").click();
   await page.getByText(/Executive goals/).click();
   const title = `E2E goal ${Date.now()}`;
   await page.getByLabel("Goal", { exact: true }).fill(title);

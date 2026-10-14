@@ -10,3 +10,4 @@
 }
 @source "./index.html";
 @source "./app.js";
+@source inline("border-mint hidden ml-auto mr-auto text-[#8090aa] text-[#f3f6fb]");

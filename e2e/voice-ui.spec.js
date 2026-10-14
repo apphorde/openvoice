@@ -125,7 +125,14 @@ async function setup(page, options = {}) {
 test("Chrome voice confirmation flow takes two explicit turns and never auto-sends", async ({ page }) => {
   const { sent, errors } = await setup(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(37, 50, 74)");
+  await expect(page.locator("#voice svg g").nth(0)).toBeVisible();
   await page.getByRole("button", { name: "Start hands-free" }).click();
+  await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(82, 119, 232)");
+  await expect(page.locator("#voice svg g").nth(0)).toBeHidden();
+  await expect(page.locator("#voice svg g").nth(1)).toBeVisible();
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
   const listeningColor = "rgb(117, 149, 255)";
   await expect(page.locator("#voice")).not.toHaveCSS("background-color", listeningColor);
@@ -170,8 +177,16 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
 
 test("voice-first mode can switch to full conversation and back", async ({ page }) => {
   await setup(page);
-  await expect(page.getByRole("heading", { name: "Voice note" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
+  await expect(page.locator("#voiceStatus")).not.toContainText(/Microphone off.*tap to start/i);
+  await expect(page.getByText("Tap the microphone and speak")).toHaveCount(0);
+  await expect(page.locator("svg")).toHaveCount(1);
   await expect(page.locator("#conversation")).toBeHidden();
+  await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
+  await expect(page.locator("#voice")).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: "/tmp/opencode/openvoice-voice-mobile.png", fullPage: true });
   await page.getByRole("button", { name: "Open chat history" }).click();
   await expect(page.locator("#conversation")).toBeVisible();
   await expect(page.locator("#conversation")).toHaveCSS("display", "flex");
@@ -180,23 +195,69 @@ test("voice-first mode can switch to full conversation and back", async ({ page 
   await page.screenshot({ path: "/tmp/opencode/session-voice-chat-mobile.png", fullPage: true });
   await page.getByRole("button", { name: "Back to voice note" }).click();
   await expect(page.locator("#conversation")).toBeHidden();
-  await expect(page.getByRole("heading", { name: "Voice note" })).toBeVisible();
+  await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
+  await expect(page.getByText("Tap the microphone and speak")).toHaveCount(0);
+  await expect(page.locator("svg")).toHaveCount(1);
 });
 
-test("goals are tucked into the session menu but remain available", async ({ page }) => {
+test("session selection keeps executive goals available", async ({ page }) => {
   await setup(page);
   await expect(page.locator("#goalsPanel")).toBeHidden();
-  await page.getByText("Switch", { exact: true }).click();
+  await page.locator("#sessionTitle").click();
+  await expect(page.locator("#conversation")).toBeHidden();
+  await expect(page.locator("#sessionSelection")).toBeVisible();
   await page.getByText(/Executive goals/).click();
   await expect(page.locator("#goalForm")).toBeVisible();
 });
 
+test("session selection replaces the main area and selecting a session restores its context", async ({ page }) => {
+  const { messages } = await setup(page, {
+    messages: {
+      b: [{ id: "b-message", role: "assistant", text: "Context for project B" }],
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Choose session: Project A" })).toBeVisible();
+  await page.getByRole("button", { name: "Open chat history" }).click();
+  await page.locator("#sessionTitle").click();
+  await expect(page.locator("#sessionSelection")).toBeVisible();
+  await expect(page.locator("#voice")).toBeHidden();
+  await expect(page.locator("#conversation")).toBeHidden();
+  await expect(page.locator("#keyboardInput")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Refresh sessions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start new session" })).toBeVisible();
+  await expect(page.locator("#list button")).toHaveCount(2);
+  await page.screenshot({ path: "/tmp/opencode/openvoice-sessions-mobile.png", fullPage: true });
+  await page.getByRole("button", { name: /Project B/ }).click();
+  await expect(page.locator("#sessionSelection")).toBeHidden();
+  await expect(page.locator("#sessionTitle")).toHaveText("Project B");
+  await expect(page.locator("#conversation")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await expect(page.getByText("Context for project B")).toBeVisible();
+  await expect(page.locator("#conversation article")).toHaveClass(/mr-auto/);
+  await expect(page.locator("#conversation article")).not.toHaveCSS("background-color", "rgb(13, 23, 41)");
+  await expect(page.locator("#conversation article")).not.toHaveCSS("border-top-width", "1px");
+  await expect(page.locator("#conversation article > div")).toHaveCSS("font-size", "14px");
+  messages.b.push({ id: "b-user", role: "user", text: "Right aligned" });
+  await page.waitForTimeout(2600);
+  await expect(page.locator("#conversation article").last()).toHaveClass(/ml-auto/);
+  const messagePositions = await page.locator("#conversation article").evaluateAll((articles) =>
+    articles.map((article) => {
+      const { left, right } = article.getBoundingClientRect();
+      return { left, right };
+    }),
+  );
+  expect(messagePositions[1].left).toBeGreaterThan(messagePositions[0].left);
+  expect(messagePositions[1].right).toBeGreaterThan(messagePositions[0].right);
+  await page.screenshot({ path: "/tmp/opencode/openvoice-chat-mobile.png", fullPage: true });
+});
+
 test("Li3 session and goal templates support create, status, delete, and plan actions", async ({ page }) => {
   const { sessions, goals } = await setup(page);
-  await page.getByText("Switch", { exact: true }).click();
+  await page.locator("#sessionTitle").click();
   await page.getByRole("button", { name: "Start new session" }).click();
   await expect(page.locator("#sessionTitle")).toHaveText("New session");
-  await page.getByText("Switch", { exact: true }).click();
+  await page.locator("#sessionTitle").click();
   await page.getByText(/Executive goals/).click();
   await page.getByLabel("Goal", { exact: true }).fill("Li3 migration goal");
   await page.getByLabel("Success criteria").fill("Reactive goal management works");
@@ -331,7 +392,7 @@ test("session switch clears draft and isolates stale events", async ({ page }) =
   await page.evaluate(() => window.emitRecognitionStart());
   await page.evaluate(() => window.emit("Switch must clear me"));
   await page.waitForTimeout(2_900);
-  await page.getByText("Switch", { exact: true }).click();
+  await page.locator("#sessionTitle").click();
   await page.getByRole("button", { name: /Project B/ }).click();
   await expect(page.locator("#voiceDraft")).toBeHidden();
   await page.evaluate(() => window.emit("Stale result", true, 0));
@@ -551,7 +612,7 @@ test("a repeated prefix across independent final Chrome segments is preserved", 
 
 test("unchanged polling preserves conversation nodes and a focused session option", async ({ page }) => {
   await setup(page);
-  await page.getByText("Switch", { exact: true }).click();
+  await page.locator("#sessionTitle").click();
   await page.getByRole("button", { name: /Project B/ }).focus();
   await page.evaluate(() => {
     window.originalOption = document.activeElement;
@@ -580,7 +641,7 @@ test("a send response arriving after switching sessions cannot clear or speak an
   await expect(page.locator("#voiceDraft")).toBeVisible();
   await page.locator("#sendDraft").click();
   await expect.poll(() => Boolean(pending)).toBe(true);
-  await page.getByText("Switch", { exact: true }).click();
+  await page.locator("#sessionTitle").click();
   await page.getByRole("button", { name: /Project B/ }).click();
   await page.getByRole("button", { name: "Start hands-free" }).click();
   await page.evaluate(() => window.emitRecognitionStart());

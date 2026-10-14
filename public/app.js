@@ -5,6 +5,7 @@ import { marked } from "marked";
 const view = {
   sessions: ref([]),
   selectedId: ref(null),
+  sessionSelectionOpen: ref(false),
   sessionTitle: ref("Loading sessions…"),
   sessionMeta: ref(""),
   authUser: ref(""),
@@ -15,9 +16,9 @@ const view = {
   goalDescription: ref(""),
   messages: ref([]),
   chatMode: ref(false),
-  statusText: ref("Microphone off — tap to start"),
+  statusText: ref("Microphone off"),
   voiceState: ref("off"),
-  transcriptPreview: ref("Tap the microphone and speak"),
+  transcriptPreview: ref(""),
   transcriptActive: ref(false),
   draftVisible: ref(false),
   draftText: ref(""),
@@ -63,13 +64,14 @@ let activePlaybackCancel;
 let seenMessages = new Set();
 let userSub = null;
 let conversation;
-let sessionPicker;
 let player;
 
 const app = mount(document.querySelector("#app-root"), {
   template: document.querySelector("#app-template"),
   setup: () => ({
     ...view,
+    openSessionSelection,
+    closeSessionSelection,
     toggleChat,
     refreshSessions,
     startNewSession,
@@ -93,7 +95,6 @@ const app = mount(document.querySelector("#app-root"), {
 async function prepareApp() {
   await app.ready;
   conversation = document.querySelector("#conversation");
-  sessionPicker = document.querySelector("#sessionPicker");
   player = document.querySelector("#player");
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -155,7 +156,7 @@ async function checkAuthAndProperties() {
 function updateTranscript() {
   const transcript = [utterance, interimTranscript].filter(Boolean).join(" ");
   view.transcriptActive.value = Boolean(transcript);
-  view.transcriptPreview.value = transcript || (view.draftVisible.value ? "" : "Tap the microphone and speak");
+  view.transcriptPreview.value = transcript;
 }
 
 function transcriptAfterExistingText(transcript, existingText) {
@@ -270,6 +271,14 @@ function toggleChat() {
   view.chatMode.value = !view.chatMode.value;
 }
 
+function openSessionSelection() {
+  view.sessionSelectionOpen.value = true;
+}
+
+function closeSessionSelection() {
+  view.sessionSelectionOpen.value = false;
+}
+
 function renderMarkdown(text) {
   return DOMPurify.sanitize(marked.parse(typeof text === "string" ? text : ""), { USE_PROFILES: { html: true } });
 }
@@ -334,7 +343,7 @@ async function refreshSessions() {
       const saved = localStorage.getItem("openvoice.session");
       const next = sessions.some((session) => session.id === saved) ? saved : sessions[0]?.id || null;
       if (previous !== next) {
-        stopVoice(previous ? "Session changed. Tap to continue." : "Microphone off — tap to start", {
+        stopVoice(previous ? "Session changed. Tap to continue." : "Microphone off", {
           preserveDraft: false,
         });
         sendRequest++;
@@ -378,7 +387,7 @@ async function selectSession(id) {
   messages = [];
   renderMessages();
   localStorage.setItem("openvoice.session", id);
-  sessionPicker.open = false;
+  closeSessionSelection();
   renderSessions();
   const session = sessions.find((item) => item.id === selected);
   view.sessionTitle.value = session?.title || "Session";
