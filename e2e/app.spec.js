@@ -132,7 +132,9 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
     fullPage: true,
   });
 
+  const logoutResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/logout");
   await page.getByRole("button", { name: "Log out" }).click();
+  expect((await logoutResponse).headers()["clear-site-data"]).toBe('"cache", "storage"');
   await page.waitForURL(/\/signed-out$/);
   const protectedApi = await page.request.get(`${baseURL}/api/goals`);
   expect(protectedApi.status()).toBe(401);

@@ -523,6 +523,16 @@ test("Li3 bindings run under blob-only script CSP", async ({ page }) => {
   );
 });
 
+test("a back-forward restored app stays hidden until the server confirms the session", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/auth/status", (route) => route.fulfill({ status: 401, json: { error: "Unauthorized" } }));
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+  });
+  await expect(page).toHaveURL(/\/auth\/login$/);
+});
+
 test("sanitized Markdown cannot inject active Li3 bindings", async ({ page }) => {
   await setup(page, {
     messages: {

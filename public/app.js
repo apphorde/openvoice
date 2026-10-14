@@ -66,6 +66,27 @@ let userSub = null;
 let conversation;
 let player;
 
+window.addEventListener("pagehide", () => {
+  document.querySelector("#app-root")?.classList.add("hidden");
+});
+
+window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) {
+    return;
+  }
+  const root = document.querySelector("#app-root");
+  root?.classList.add("hidden");
+  fetch("/api/auth/status", { cache: "no-store" })
+    .then((response) => {
+      if (!response.ok) {
+        window.location.replace("/auth/login");
+        return;
+      }
+      root?.classList.remove("hidden");
+    })
+    .catch(() => window.location.replace("/auth/login"));
+});
+
 const app = mount(document.querySelector("#app-root"), {
   template: document.querySelector("#app-template"),
   setup: () => ({
@@ -106,6 +127,10 @@ async function request(path, options) {
   const response = await fetch(path, { cache: "no-store", ...options });
   const data = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
+    if (response.status === 401 && path.startsWith("/api/")) {
+      document.querySelector("#app-root")?.classList.add("hidden");
+      window.location.replace("/auth/login");
+    }
     throw new Error(data?.error || `Request failed (${response.status})`);
   }
   return { response, data };

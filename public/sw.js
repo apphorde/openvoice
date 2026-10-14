@@ -1,9 +1,9 @@
-const CACHE = "session-voice-v5";
+const CACHE = "session-voice-v6";
 self.addEventListener("install", (e) =>
   e.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll(["/", "/app.css", "/app.bundle.js", "/li3-config.js", "/manifest.json", "/icon.svg"])),
+      .then((c) => c.addAll(["/app.css", "/app.bundle.js", "/li3-config.js", "/manifest.json", "/icon.svg"])),
   ),
 );
 self.addEventListener("activate", (e) =>
@@ -16,6 +16,10 @@ self.addEventListener("activate", (e) =>
 );
 self.addEventListener("fetch", (e) => {
   if (e.request.method === "GET" && new URL(e.request.url).origin === location.origin) {
+    if (e.request.mode === "navigate") {
+      e.respondWith(fetch(e.request, { cache: "no-store" }));
+      return;
+    }
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
   }
 });

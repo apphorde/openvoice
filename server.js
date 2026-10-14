@@ -350,6 +350,7 @@ const server = http.createServer(async (req, res) => {
         identities.delete(`auth:${sid}`);
       }
       setCookie(res, "", 0);
+      res.setHeader("Clear-Site-Data", '"cache", "storage"');
       res.writeHead(303, { Location: "/signed-out" });
       return res.end();
     }
