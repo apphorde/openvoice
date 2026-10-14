@@ -1,7 +1,9 @@
-const CACHE = "session-voice-v4";
+const CACHE = "session-voice-v5";
 self.addEventListener("install", (e) =>
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(["/", "/app.css", "/app.bundle.js", "/manifest.json", "/icon.svg"])),
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(["/", "/app.css", "/app.bundle.js", "/li3-config.js", "/manifest.json", "/icon.svg"])),
   ),
 );
 self.addEventListener("activate", (e) =>

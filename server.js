@@ -627,7 +627,7 @@ const server = http.createServer(async (req, res) => {
           "X-Frame-Options": "DENY",
           "Referrer-Policy": "same-origin",
           "Content-Security-Policy":
-            "default-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+            "default-src 'self'; script-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
           "Cache-Control": "no-store",
         });
         return res.end(data);

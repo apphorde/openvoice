@@ -1,6 +1,6 @@
 export default [
   {
-    ignores: ["node_modules/**", "public/app.bundle.js"],
+    ignores: ["node_modules/**", "public/app.bundle.js", "src/vendor/li3-web.js"],
   },
   {
     files: ["**/*.js"],

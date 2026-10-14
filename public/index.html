@@ -9,222 +9,319 @@
     <title>OpenVoice</title>
   </head>
   <body class="min-h-dvh min-w-[320px] bg-[#080f20] font-sans text-[#f3f6fb]">
-    <main class="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-5 py-5 sm:px-8 sm:py-7">
-      <header class="grid min-h-12 grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <details id="sessionPicker" class="relative justify-self-start">
-          <summary
-            class="list-none cursor-pointer rounded-full px-3 py-2 text-sm text-[#9eabc1] hover:bg-[#16233a]"
-            aria-label="Switch session"
-          >
-            ‹ <span>Switch</span>
-          </summary>
-          <div
-            class="absolute left-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-[#25324a] bg-[#0d1729] p-3 shadow-xl"
-          >
-            <div class="flex items-center justify-between gap-2 border-b border-[#25324a] pb-2 text-sm font-medium">
-              <span>Sessions</span>
-              <div class="flex gap-1">
-                <button
-                  id="newSession"
-                  class="size-9 rounded-full text-lg text-[#cbd6ea] hover:bg-[#1b2941]"
-                  aria-label="Start new session"
-                >
-                  +
-                </button>
-                <button
-                  id="refresh"
-                  class="size-9 rounded-full text-lg text-[#cbd6ea] hover:bg-[#1b2941]"
-                  aria-label="Refresh sessions"
-                >
-                  ↻
-                </button>
+    <div id="app-root"></div>
+    <template id="app-template">
+      <main class="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-5 py-5 sm:px-8 sm:py-7">
+        <header class="grid min-h-12 grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <details id="sessionPicker" class="relative justify-self-start">
+            <summary
+              class="list-none cursor-pointer rounded-full px-3 py-2 text-sm text-[#9eabc1] hover:bg-[#16233a]"
+              aria-label="Switch session"
+            >
+              ‹ <span>Switch</span>
+            </summary>
+            <div
+              class="absolute left-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-[#25324a] bg-[#0d1729] p-3 shadow-xl"
+            >
+              <div class="flex items-center justify-between gap-2 border-b border-[#25324a] pb-2 text-sm font-medium">
+                <span>Sessions</span>
+                <div class="flex gap-1">
+                  <button
+                    id="newSession"
+                    class="size-9 rounded-full text-lg text-[#cbd6ea] hover:bg-[#1b2941]"
+                    aria-label="Start new session"
+                    on-click="startNewSession()"
+                  >
+                    +
+                  </button>
+                  <button
+                    id="refresh"
+                    class="size-9 rounded-full text-lg text-[#cbd6ea] hover:bg-[#1b2941]"
+                    aria-label="Refresh sessions"
+                    on-click="refreshSessions()"
+                  >
+                    ↻
+                  </button>
+                </div>
               </div>
-            </div>
-            <div id="list" class="mt-2 grid max-h-56 gap-2 overflow-auto"></div>
-            <details id="goalsPanel" class="mt-3 border-t border-[#25324a] pt-3">
-              <summary class="cursor-pointer text-sm text-[#9eabc1]">
-                Executive goals <span id="goalCount" class="text-xs text-[#71809a]"></span>
-              </summary>
-              <p class="my-3 text-sm text-[#9eabc1]">
-                Goals are stored centrally. Share them with sessions only when you choose.
-              </p>
-              <button
-                id="applyPlan"
-                class="my-2 min-h-10 rounded-lg border border-[#25324a] px-3 text-sm hover:bg-[#16233a]"
-                type="button"
-              >
-                Send plan to all top-level sessions
-              </button>
-              <p id="goalNotice" class="my-2 text-sm text-[#9eabc1]" aria-live="polite"></p>
-              <form id="goalForm" class="grid gap-2">
-                <label class="text-sm" for="goalTitle">Goal</label>
-                <input
-                  class="w-full rounded-lg border border-[#25324a] bg-[#080f20] p-3"
-                  id="goalTitle"
-                  maxlength="200"
-                  required
-                  placeholder="What outcome matters?"
-                />
-                <label class="text-sm" for="goalDescription">Success criteria</label>
-                <textarea
-                  class="w-full rounded-lg border border-[#25324a] bg-[#080f20] p-3"
-                  id="goalDescription"
-                  rows="2"
-                  maxlength="4000"
-                ></textarea>
-                <button class="min-h-10 rounded-lg bg-[#5277e8] px-4 font-semibold text-white" type="submit">
-                  Add goal
+              <div id="list" class="mt-2 grid max-h-56 gap-2 overflow-auto">
+                <template foreach="session of sessions">
+                  <button
+                    type="button"
+                    class="grid w-full gap-1 rounded-lg border border-transparent p-3 text-left transition hover:border-mint focus-visible:outline-2 focus-visible:outline-mint"
+                    class-border-mint="session.id === selectedId"
+                    class-bg-ink="session.id === selectedId"
+                    class-bg-panel="session.id !== selectedId"
+                    on-click="selectSession(session.id)"
+                  >
+                    <span class="overflow-hidden text-ellipsis whitespace-nowrap">{{ session.title }}</span>
+                    <small class="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted">
+                      {{ session.status === 'running' ? 'Working' : session.directory || '' }}
+                    </small>
+                  </button>
+                </template>
+              </div>
+              <details id="goalsPanel" class="mt-3 border-t border-[#25324a] pt-3">
+                <summary class="cursor-pointer text-sm text-[#9eabc1]">
+                  Executive goals <span id="goalCount" class="text-xs text-[#71809a]">{{ goalCount }}</span>
+                </summary>
+                <p class="my-3 text-sm text-[#9eabc1]">
+                  Goals are stored centrally. Share them with sessions only when you choose.
+                </p>
+                <button
+                  id="applyPlan"
+                  class="my-2 min-h-10 rounded-lg border border-[#25324a] px-3 text-sm hover:bg-[#16233a]"
+                  type="button"
+                  on-click="applyPlan()"
+                >
+                  Send plan to all top-level sessions
                 </button>
-              </form>
-              <div id="goals" class="mt-3 grid gap-2"></div>
-            </details>
+                <p id="goalNotice" class="my-2 text-sm text-[#9eabc1]" aria-live="polite">{{ goalNotice }}</p>
+                <form id="goalForm" class="grid gap-2" on-submit.prevent="addGoal()">
+                  <label class="text-sm" for="goalTitle">Goal</label>
+                  <input
+                    class="w-full rounded-lg border border-[#25324a] bg-[#080f20] p-3"
+                    id="goalTitle"
+                    bind-value="goalTitle"
+                    on-input="setGoalTitle($event.target.value)"
+                    maxlength="200"
+                    required
+                    placeholder="What outcome matters?"
+                  />
+                  <label class="text-sm" for="goalDescription">Success criteria</label>
+                  <textarea
+                    class="w-full rounded-lg border border-[#25324a] bg-[#080f20] p-3"
+                    id="goalDescription"
+                    bind-value="goalDescription"
+                    on-input="setGoalDescription($event.target.value)"
+                    rows="2"
+                    maxlength="4000"
+                  ></textarea>
+                  <button class="min-h-10 rounded-lg bg-[#5277e8] px-4 font-semibold text-white" type="submit">
+                    Add goal
+                  </button>
+                </form>
+                <div id="goals" class="mt-3 grid gap-2">
+                  <template foreach="goal of goals">
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-line bg-panel p-2">
+                      <span class="min-w-0 flex-1 break-words text-xs"
+                        >{{ goal.description ? goal.title + ' — ' + goal.description : goal.title }}</span
+                      >
+                      <select
+                        class="max-w-28 rounded border border-line bg-ink p-2 text-sm text-paper focus-visible:outline-2 focus-visible:outline-mint"
+                        bind-value="goal.status"
+                        on-change="updateGoal(goal.id, { status: $event.target.value })"
+                        aria-label="Goal status"
+                      >
+                        <option value="open">open</option>
+                        <option value="in-progress">in-progress</option>
+                        <option value="done">done</option>
+                      </select>
+                      <button
+                        type="button"
+                        class="min-h-10 min-w-10 rounded-lg border border-line bg-panel text-xl hover:bg-line focus-visible:outline-2 focus-visible:outline-mint"
+                        attr-aria-label="`Delete ${goal.title}`"
+                        on-click="deleteGoal(goal.id)"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </template>
+                </div>
+              </details>
+            </div>
+          </details>
+          <div class="min-w-0 text-center">
+            <h1 class="text-lg font-medium tracking-tight sm:text-xl">Voice note</h1>
+            <p id="sessionTitle" class="truncate text-xs text-[#8090aa]">{{ sessionTitle }}</p>
+            <span id="sessionMeta" class="sr-only">{{ sessionMeta }}</span>
           </div>
-        </details>
-        <div class="min-w-0 text-center">
-          <h1 class="text-lg font-medium tracking-tight sm:text-xl">Voice note</h1>
-          <p id="sessionTitle" class="truncate text-xs text-[#8090aa]">Loading sessions…</p>
-          <span id="sessionMeta" class="sr-only"></span>
-        </div>
-        <div class="flex items-center justify-self-end gap-2">
-          <span id="user" class="sr-only"></span>
-          <button
-            id="modeToggle"
-            type="button"
-            aria-label="Open chat history"
-            aria-pressed="false"
-            class="rounded-full px-3 py-2 text-sm text-[#9eabc1] hover:bg-[#16233a]"
+          <div class="flex items-center justify-self-end gap-2">
+            <span id="user" class="sr-only">{{ authUser }}</span>
+            <button
+              id="modeToggle"
+              type="button"
+              attr-aria-label="chatMode ? 'Back to voice note' : 'Open chat history'"
+              attr-aria-pressed="String(chatMode)"
+              class="rounded-full px-3 py-2 text-sm text-[#9eabc1] hover:bg-[#16233a]"
+              on-click="toggleChat()"
+            >
+              {{ chatMode ? 'Voice' : 'Chat' }}
+            </button>
+            <form method="post" action="/auth/logout">
+              <button
+                class="size-9 rounded-full text-[#8090aa] hover:bg-[#16233a]"
+                aria-label="Log out"
+                title="Log out"
+              >
+                ↗
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <section
+          id="conversation"
+          class="chat-history my-2 max-h-[46dvh] min-h-48 flex-1 flex-col gap-3 overflow-auto rounded-2xl border border-[#202c43] bg-[#0d1729] p-4"
+          class-flex="chatMode"
+          bind-hidden.bool="!chatMode"
+          class-hidden="!chatMode"
+          aria-live="polite"
+          aria-label="Conversation"
+        >
+          <template if="messages.length === 0">
+            <p id="emptyConversation" class="m-auto p-6 text-center text-sm text-muted">
+              {{ selectedId ? 'No messages in this session yet.' : 'Choose a session to begin.' }}
+            </p>
+          </template>
+          <template foreach="message of messages">
+            <article
+              class="mr-auto max-w-[88%] rounded-xl border border-line bg-panel p-4"
+              class-ml-auto="message.role === 'user'"
+              class-border-mint="message.role === 'user'"
+              class-bg-ink="message.role === 'user'"
+            >
+              <span class="text-xs font-semibold text-mint"
+                >{{ message.role === 'assistant' ? 'Assistant' : 'You' }}</span
+              >
+              <div
+                class="my-2 whitespace-pre-wrap break-words leading-6 [&_a]:text-mint [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-black [&_pre]:p-3 [&_code]:font-mono [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5"
+                bind-innerhtml="message.html"
+              ></div>
+              <time class="text-[10px] text-muted">{{ message.timeLabel }}</time>
+            </article>
+          </template>
+        </section>
+
+        <section
+          class="voice-screen flex flex-1 flex-col items-center py-8 text-center sm:py-12"
+          bind-hidden.bool="chatMode"
+          aria-label="Voice controls"
+        >
+          <p
+            id="voiceStatus"
+            class="mb-1 text-sm text-[#9eabc1] data-[state=starting]:text-[#aab4ad] data-[state=waiting]:text-[#aab4ad] data-[state=review]:text-[#e4b96d] data-[state=error]:text-[#ff9b91]"
+            attr-data-state="voiceState"
+            aria-live="polite"
           >
-            Chat
-          </button>
-          <form method="post" action="/auth/logout">
-            <button class="size-9 rounded-full text-[#8090aa] hover:bg-[#16233a]" aria-label="Log out" title="Log out">
-              ↗
-            </button>
-          </form>
-        </div>
-      </header>
-
-      <section
-        id="conversation"
-        class="chat-history my-2 hidden max-h-[46dvh] min-h-48 flex-1 flex-col gap-3 overflow-auto rounded-2xl border border-[#202c43] bg-[#0d1729] p-4"
-        aria-live="polite"
-        aria-label="Conversation"
-      >
-        <p id="emptyConversation" class="m-auto p-6 text-center text-sm text-muted">
-          Select a session to see its messages.
-        </p>
-      </section>
-
-      <section
-        class="voice-screen flex flex-1 flex-col items-center py-8 text-center sm:py-12"
-        aria-label="Voice controls"
-      >
-        <p
-          id="voiceStatus"
-          class="mb-1 text-sm text-[#9eabc1] data-[state=starting]:text-[#aab4ad] data-[state=waiting]:text-[#aab4ad] data-[state=review]:text-[#e4b96d] data-[state=error]:text-[#ff9b91]"
-          data-state="off"
-          aria-live="polite"
-        >
-          Microphone off — tap to start
-        </p>
-        <p
-          id="transcriptPreview"
-          class="min-h-48 w-full max-w-3xl whitespace-pre-wrap pt-8 text-left text-3xl leading-[1.35] text-[#8090aa] sm:text-4xl"
-          aria-live="polite"
-        >
-          Tap the microphone and speak
-        </p>
-        <div id="draftPanel" class="my-3 w-full max-w-3xl text-left" hidden>
-          <label class="sr-only" for="voiceDraft">Review and edit your message</label>
-          <textarea
-            class="min-h-48 w-full resize-none bg-transparent text-left text-3xl leading-[1.35] text-[#f3f6fb] focus-visible:outline-2 focus-visible:outline-[#7595ff] sm:text-4xl"
-            id="voiceDraft"
-            rows="3"
-            aria-describedby="draftHint"
-          ></textarea>
-          <p id="draftHint" class="sr-only">Microphone off · Nothing is sent until you choose Send.</p>
-          <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
-            <button
-              id="sendDraft"
-              class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
-              type="button"
-            >
-              Send
-            </button>
-            <button
-              id="resumeVoice"
-              type="button"
-              class="min-h-10 rounded-lg border border-line px-3 text-sm hover:bg-line disabled:opacity-50"
-            >
-              Resume dictation
-            </button>
-            <button
-              id="discardDraft"
-              type="button"
-              class="min-h-10 rounded-lg border border-line px-3 text-sm hover:bg-line disabled:opacity-50"
-            >
-              Discard
-            </button>
+            {{ statusText }}
+          </p>
+          <p
+            id="transcriptPreview"
+            class="min-h-48 w-full max-w-3xl whitespace-pre-wrap pt-8 text-left text-3xl leading-[1.35] sm:text-4xl"
+            class-text-[#8090aa]="!transcriptActive"
+            class-text-[#f3f6fb]="transcriptActive"
+            bind-hidden.bool="draftVisible"
+            attr-aria-live="draftVisible ? 'off' : 'polite'"
+          >
+            {{ transcriptPreview }}
+          </p>
+          <div id="draftPanel" class="my-3 w-full max-w-3xl text-left" bind-hidden.bool="!draftVisible">
+            <label class="sr-only" for="voiceDraft">Review and edit your message</label>
+            <textarea
+              class="min-h-48 w-full resize-none bg-transparent text-left text-3xl leading-[1.35] text-[#f3f6fb] focus-visible:outline-2 focus-visible:outline-[#7595ff] sm:text-4xl"
+              id="voiceDraft"
+              rows="3"
+              aria-describedby="draftHint"
+              bind-value="draftText"
+              on-input="updateDraft($event.target.value)"
+            ></textarea>
+            <p id="draftHint" class="sr-only">{{ draftHint }}</p>
+            <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
+              <button
+                id="sendDraft"
+                class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
+                type="button"
+                bind-disabled.bool="sendDraftDisabled"
+                on-click="sendDraft()"
+              >
+                Send
+              </button>
+              <button
+                id="resumeVoice"
+                type="button"
+                class="min-h-10 rounded-lg border border-line px-3 text-sm hover:bg-line disabled:opacity-50"
+                bind-disabled.bool="resumeDisabled"
+                on-click="resumeDictation()"
+              >
+                Resume dictation
+              </button>
+              <button
+                id="discardDraft"
+                type="button"
+                class="min-h-10 rounded-lg border border-line px-3 text-sm hover:bg-line disabled:opacity-50"
+                bind-disabled.bool="discardDisabled"
+                on-click="discardDraft()"
+              >
+                Discard
+              </button>
+            </div>
           </div>
-        </div>
-        <svg
-          class="mt-8 h-20 w-full max-w-xl text-[#7595ff] sm:mt-12"
-          aria-hidden="true"
-          viewBox="0 0 320 64"
-          fill="none"
-        >
-          <path
-            d="M6 31v2m12-8v18m12-27v36m12-21v6m12-17v28m12-34v40m12-23v6m12-17v28m12-35v42m12-29v16m12-22v28m12-39v50m12-32v14m12-23v32m12-27v22m12-36v50m12-28v6m12-17v28m12-34v40m12-25v10m12-19v28m12-37v46m12-30v14m12-22v30m12-39v48m12-29v10m12-19v28m12-35v42m12-25v8m12-16v24m12-31v38m12-24v10m12-17v24m12-31v38m12-23v8m12-15v22m12-27v32m12-19v6"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-          />
-        </svg>
-        <button
-          id="voice"
-          class="mt-auto mb-5 flex size-20 shrink-0 items-center justify-center rounded-full border border-[#7595ff] bg-[#5277e8] text-white shadow-[0_0_36px_#5277e866] transition hover:bg-[#6488f5] active:scale-[.97] focus-visible:outline-2 focus-visible:outline-white data-[state=listening]:animate-pulse data-[state=listening]:bg-[#7595ff] data-[state=speaking]:bg-[#b7cde6] data-[state=speaking]:text-[#15202d]"
-          type="button"
-          aria-pressed="false"
-          aria-labelledby="voiceLabel"
-        >
-          <svg class="size-6" aria-hidden="true" viewBox="0 0 24 24" fill="none">
-            <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
+          <svg
+            class="mt-8 h-20 w-full max-w-xl text-[#7595ff] sm:mt-12"
+            aria-hidden="true"
+            viewBox="0 0 320 64"
+            fill="none"
+          >
             <path
-              d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"
+              d="M6 31v2m12-8v18m12-27v36m12-21v6m12-17v28m12-34v40m12-23v6m12-17v28m12-35v42m12-29v16m12-22v28m12-39v50m12-32v14m12-23v32m12-27v22m12-36v50m12-28v6m12-17v28m12-34v40m12-25v10m12-19v28m12-37v46m12-30v14m12-22v30m12-39v48m12-29v10m12-19v28m12-35v42m12-25v8m12-16v24m12-31v38m12-24v10m12-17v24m12-31v38m12-23v8m12-15v22m12-27v32m12-19v6"
               stroke="currentColor"
-              stroke-width="1.8"
+              stroke-width="2.5"
               stroke-linecap="round"
             />
           </svg>
-          <span id="voiceLabel" class="sr-only">Start hands-free</span>
-        </button>
-        <p class="sr-only">Tap to listen. After a pause, review and edit your draft before sending.</p>
-      </section>
-
-      <section id="keyboardInput" class="hidden w-full border-t border-[#202c43] py-4">
-        <form id="composer" class="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <textarea
-            class="w-full rounded-xl border border-[#25324a] bg-[#0d1729] p-4 text-[#f3f6fb] placeholder:text-[#71809a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
-            id="prompt"
-            aria-label="Instruction"
-            rows="2"
-            placeholder="Write an instruction…"
-          ></textarea>
           <button
-            id="send"
-            class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
-            type="submit"
+            id="voice"
+            class="mt-auto mb-5 flex size-20 shrink-0 items-center justify-center rounded-full border border-[#7595ff] bg-[#5277e8] text-white shadow-[0_0_36px_#5277e866] transition hover:bg-[#6488f5] active:scale-[.97] focus-visible:outline-2 focus-visible:outline-white data-[state=listening]:animate-pulse data-[state=listening]:bg-[#7595ff] data-[state=speaking]:bg-[#b7cde6] data-[state=speaking]:text-[#15202d]"
+            type="button"
+            attr-data-state="voiceState"
+            attr-aria-pressed="String(voiceMode)"
+            on-click="toggleVoice()"
+            aria-labelledby="voiceLabel"
           >
-            Send
+            <svg class="size-6" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
+              <path
+                d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+            <span id="voiceLabel" class="sr-only">{{ voiceLabel }}</span>
           </button>
-        </form>
-      </section>
+          <p class="sr-only">Tap to listen. After a pause, review and edit your draft before sending.</p>
+        </section>
 
-      <audio id="player" hidden></audio>
-      <footer id="connectionStatus" class="sr-only">
-        Voice works while this app stays open. Microphone access is controlled by your browser.
-      </footer>
-    </main>
+        <section id="keyboardInput" class="w-full border-t border-[#202c43] py-4" bind-hidden.bool="!chatMode">
+          <form id="composer" class="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]" on-submit.prevent="sendTypedPrompt()">
+            <textarea
+              class="w-full rounded-xl border border-[#25324a] bg-[#0d1729] p-4 text-[#f3f6fb] placeholder:text-[#71809a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
+              id="prompt"
+              aria-label="Instruction"
+              rows="2"
+              placeholder="Write an instruction…"
+              bind-value="prompt"
+              on-input="updatePrompt($event.target.value)"
+            ></textarea>
+            <button
+              id="send"
+              class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
+              type="submit"
+              bind-disabled.bool="sendDisabled"
+            >
+              Send
+            </button>
+          </form>
+        </section>
+
+        <audio id="player" hidden></audio>
+        <footer id="connectionStatus" class="sr-only">
+          Voice works while this app stays open. Microphone access is controlled by your browser.
+        </footer>
+      </main>
+    </template>
+    <script src="/li3-config.js"></script>
     <script src="/app.bundle.js"></script>
   </body>
 </html>

@@ -11,7 +11,8 @@ async function setup(page, options = {}) {
     { id: "a", title: "Project A", status: "idle" },
     { id: "b", title: "Project B", status: "idle" },
   ];
-  const messages = Object.fromEntries(sessions.map(({ id }) => [id, []]));
+  const messages = Object.fromEntries(sessions.map(({ id }) => [id, options.messages?.[id] || []]));
+  const goals = [];
   const sent = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -48,6 +49,13 @@ async function setup(page, options = {}) {
       results.item = (i) => results[i];
       window.recognizers[index]?.onresult?.({ resultIndex: 0, results });
     };
+    window.emitSnapshot = (segments, resultIndex = 0, index = window.recognizers.length - 1) => {
+      const results = segments.map(({ text, final = false }) =>
+        Object.assign([{ transcript: text }], { isFinal: final }),
+      );
+      results.item = (i) => results[i];
+      window.recognizers[index]?.onresult?.({ resultIndex, results });
+    };
     HTMLMediaElement.prototype.play = function () {
       window.plays = (window.plays || 0) + 1;
       setTimeout(() => this.dispatchEvent(new Event("ended")), 0);
@@ -55,7 +63,15 @@ async function setup(page, options = {}) {
     };
   });
   await page.route("**/api/auth/status", (r) => r.fulfill({ json: { user: null } }));
-  await page.route("**/api/sessions", (r) => r.fulfill({ json: { sessions } }));
+  await page.route("**/api/sessions", async (r) => {
+    if (r.request().method() === "POST") {
+      const created = { id: `new-${sessions.length}`, title: "New session", status: "idle" };
+      sessions.push(created);
+      messages[created.id] = [];
+      return r.fulfill({ json: { id: created.id } });
+    }
+    return r.fulfill({ json: { sessions } });
+  });
   await page.route("**/api/sessions/*/messages**", (r) => {
     const id = new URL(r.request().url()).pathname.split("/")[3];
     return r.fulfill({ json: { messages: messages[id] || [] } });
@@ -73,7 +89,28 @@ async function setup(page, options = {}) {
     );
     return r.fulfill({ status: 202, json: {} });
   });
-  await page.route("**/api/goals", (r) => r.fulfill({ json: [] }));
+  await page.route("**/api/goals", async (r) => {
+    if (r.request().method() === "POST") {
+      const input = r.request().postDataJSON();
+      goals.push({ id: `goal-${goals.length + 1}`, ...input, status: "open" });
+      return r.fulfill({ status: 201, json: goals.at(-1) });
+    }
+    return r.fulfill({ json: goals });
+  });
+  await page.route("**/api/goals/*", async (r) => {
+    const id = new URL(r.request().url()).pathname.split("/").at(-1);
+    const goalIndex = goals.findIndex((goal) => goal.id === id);
+    if (r.request().method() === "PATCH" && goalIndex >= 0) {
+      goals[goalIndex] = { ...goals[goalIndex], ...r.request().postDataJSON() };
+      return r.fulfill({ json: goals[goalIndex] });
+    }
+    if (r.request().method() === "DELETE" && goalIndex >= 0) {
+      goals.splice(goalIndex, 1);
+      return r.fulfill({ status: 204, body: "" });
+    }
+    return r.fulfill({ status: 404, json: { error: "Not found" } });
+  });
+  await page.route("**/api/plan/send", (r) => r.fulfill({ json: { sent: 2, failed: 0 } }));
   await page.route("**/api/tts", async (r) => {
     if (options.onTts) {
       return options.onTts(r);
@@ -82,7 +119,7 @@ async function setup(page, options = {}) {
   });
   await page.goto("/");
   await expect(page.locator("#sessionTitle")).toHaveText(sessions[0].title);
-  return { sent, messages, errors, sessions };
+  return { sent, messages, errors, sessions, goals };
 }
 
 test("Chrome voice confirmation flow takes two explicit turns and never auto-sends", async ({ page }) => {
@@ -137,6 +174,7 @@ test("voice-first mode can switch to full conversation and back", async ({ page 
   await expect(page.locator("#conversation")).toBeHidden();
   await page.getByRole("button", { name: "Open chat history" }).click();
   await expect(page.locator("#conversation")).toBeVisible();
+  await expect(page.locator("#conversation")).toHaveCSS("display", "flex");
   await expect(page.getByRole("button", { name: "Back to voice note" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#keyboardInput")).toBeVisible();
   await page.screenshot({ path: "/tmp/opencode/session-voice-chat-mobile.png", fullPage: true });
@@ -151,6 +189,28 @@ test("goals are tucked into the session menu but remain available", async ({ pag
   await page.getByText("Switch", { exact: true }).click();
   await page.getByText(/Executive goals/).click();
   await expect(page.locator("#goalForm")).toBeVisible();
+});
+
+test("Li3 session and goal templates support create, status, delete, and plan actions", async ({ page }) => {
+  const { sessions, goals } = await setup(page);
+  await page.getByText("Switch", { exact: true }).click();
+  await page.getByRole("button", { name: "Start new session" }).click();
+  await expect(page.locator("#sessionTitle")).toHaveText("New session");
+  await page.getByText("Switch", { exact: true }).click();
+  await page.getByText(/Executive goals/).click();
+  await page.getByLabel("Goal", { exact: true }).fill("Li3 migration goal");
+  await page.getByLabel("Success criteria").fill("Reactive goal management works");
+  await page.getByRole("button", { name: "Add goal" }).click();
+  await expect(page.getByText("Li3 migration goal — Reactive goal management works")).toBeVisible();
+  await page.getByRole("combobox", { name: "Goal status" }).selectOption("in-progress");
+  await expect.poll(() => goals[0]?.status).toBe("in-progress");
+  await page.getByRole("button", { name: "Delete Li3 migration goal" }).click();
+  await expect(page.getByText("Li3 migration goal — Reactive goal management works")).toBeHidden();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Send plan to all top-level sessions" }).click();
+  await expect(page.locator("#goalNotice")).toHaveText("Sent to 2; 0 failed.");
+  expect(sessions).toHaveLength(3);
+  expect(goals).toHaveLength(0);
 });
 
 test("stop and delayed recognizer events preserve editable review; resume and discard work", async ({ page }) => {
@@ -339,24 +399,110 @@ test("late final results improve the draft before review and edits survive subse
   expect(sent).toEqual([]);
 });
 
-test("repeated cumulative Chrome results don't duplicate the dictated phrase", async ({ page }) => {
+test("a final Chrome transcript snapshot replaces its earlier interim revision", async ({ page }) => {
   const { sent } = await setup(page);
   await page.getByRole("button", { name: "Start hands-free" }).click();
   await page.evaluate(() => window.emitRecognitionStart());
-  await page.evaluate(() => window.emitSegments([{ text: "I want you", final: false }]));
+  await page.evaluate(() => window.emitSnapshot([{ text: "I want you", final: false }]));
   await expect(page.locator("#transcriptPreview")).toHaveText("I want you");
-  await page.evaluate(() => window.emitSegments([{ text: "I want you to look", final: false }]));
+  await page.evaluate(() => window.emitSnapshot([{ text: "I want you to look", final: false }]));
   await expect(page.locator("#transcriptPreview")).toHaveText("I want you to look");
-  await page.evaluate(() =>
-    window.emitSegments([
-      { text: "I want you" },
-      { text: "I want you to" },
-      { text: "I want you to look at the screenshots" },
-    ]),
-  );
+  await page.evaluate(() => window.emitSnapshot([{ text: "I want you to look at the screenshots", final: true }]));
   await page.waitForTimeout(2_950);
   await expect(page.locator("#voiceDraft")).toHaveValue("I want you to look at the screenshots");
   expect(sent).toEqual([]);
+});
+
+test("Li3 bindings run under blob-only script CSP", async ({ page }) => {
+  const consoleErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+  const documentResponse = page.waitForResponse((response) => response.request().resourceType() === "document");
+  await setup(page);
+  const response = await documentResponse;
+  const csp = response.headers()["content-security-policy"];
+  expect(csp).toContain("script-src 'self' blob:");
+  expect(csp).not.toContain("unsafe-eval");
+  await expect(page.getByRole("button", { name: "Open chat history" })).toBeVisible();
+  await page.getByRole("button", { name: "Open chat history" }).click();
+  await expect(page.locator("#conversation")).toBeVisible();
+  expect(consoleErrors.filter((message) => /content security policy|unsafe-eval|blob:/i.test(message))).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  await page.route("**/csp-eval-probe.js", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: 'try { window.evalProbe = Function("return true")(); } catch (error) { window.evalProbe = error.name; }',
+    }),
+  );
+  await page.evaluate(() => {
+    window.cspViolations = [];
+    document.addEventListener("securitypolicyviolation", (event) => {
+      window.cspViolations.push({ directive: event.effectiveDirective, blockedURI: event.blockedURI });
+    });
+    const inline = document.createElement("script");
+    inline.textContent = "window.inlineScriptRan = true";
+    document.body.append(inline);
+    const evalProbe = document.createElement("script");
+    evalProbe.src = "/csp-eval-probe.js";
+    document.body.append(evalProbe);
+  });
+  await expect.poll(() => page.evaluate(() => window.cspViolations.length)).toBeGreaterThanOrEqual(2);
+  expect(await page.evaluate(() => window.inlineScriptRan)).toBeUndefined();
+  expect(await page.evaluate(() => window.evalProbe)).toBe("EvalError");
+  expect(await page.evaluate(() => window.cspViolations)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ blockedURI: "inline" }),
+      expect.objectContaining({ blockedURI: "eval" }),
+    ]),
+  );
+});
+
+test("sanitized Markdown cannot inject active Li3 bindings", async ({ page }) => {
+  await setup(page, {
+    messages: {
+      a: [
+        {
+          id: "unsafe-markdown",
+          role: "assistant",
+          text: '<button on-click="window.markdownInjected = true">Click me</button><script>window.markdownInjected = true</script>',
+        },
+      ],
+    },
+  });
+  await page.getByRole("button", { name: "Open chat history" }).click();
+  const conversation = page.locator("#conversation");
+  await expect(conversation.locator("article")).toHaveCount(1);
+  await expect(conversation.locator("script, [on-click]")).toHaveCount(0);
+  await expect(conversation.getByRole("button", { name: "Click me" })).toHaveCount(1);
+  await conversation.getByRole("button", { name: "Click me" }).click();
+  expect(await page.evaluate(() => window.markdownInjected)).toBeUndefined();
+});
+
+test("cumulative Chrome revisions replace interim text instead of appending it", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  for (const phrase of ["this", "this is", "this is an", "this is an example"]) {
+    await page.evaluate((text) => window.emitSnapshot([{ text }]), phrase);
+    await expect(page.locator("#transcriptPreview")).toHaveText(phrase);
+  }
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("this is an example");
+  expect(sent).toEqual([]);
+});
+
+test("Chrome incremental result events retain final segments and revise only current interim", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emitSnapshot([{ text: "this", final: true }, { text: "is" }]));
+  await expect(page.locator("#transcriptPreview")).toHaveText("this is");
+  await page.evaluate(() => window.emitSnapshot([{ text: "this", final: true }, { text: "is an" }], 1));
+  await expect(page.locator("#transcriptPreview")).toHaveText("this is an");
+  await expect.poll(() => sent.length).toBe(0);
 });
 
 test("repeated spoken words in separate Chrome results are preserved", async ({ page }) => {
@@ -367,6 +513,15 @@ test("repeated spoken words in separate Chrome results are preserved", async ({ 
   await page.waitForTimeout(2_950);
   await expect(page.locator("#voiceDraft")).toHaveValue("go go");
   expect(sent).toEqual([]);
+});
+
+test("a repeated prefix across independent final Chrome segments is preserved", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emitSegments([{ text: "I" }, { text: "I think" }]));
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("I I think");
 });
 
 test("unchanged polling preserves conversation nodes and a focused session option", async ({ page }) => {

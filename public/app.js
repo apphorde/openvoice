@@ -1,30 +1,38 @@
-const list = document.querySelector("#list");
-const conversation = document.querySelector("#conversation");
-const modeToggle = document.querySelector("#modeToggle");
-const voiceScreen = document.querySelector(".voice-screen");
-const keyboardInput = document.querySelector("#keyboardInput");
-const voiceButton = document.querySelector("#voice");
-const voiceLabel = document.querySelector("#voiceLabel");
-const voiceStatus = document.querySelector("#voiceStatus");
-const transcriptPreview = document.querySelector("#transcriptPreview");
-const player = document.querySelector("#player");
-const draftPanel = document.querySelector("#draftPanel");
-const voiceDraft = document.querySelector("#voiceDraft");
+import { mount, nextTick, ref } from "../src/vendor/li3-web.js";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
+
+const view = {
+  sessions: ref([]),
+  selectedId: ref(null),
+  sessionTitle: ref("Loading sessions…"),
+  sessionMeta: ref(""),
+  authUser: ref(""),
+  goalCount: ref("(none yet)"),
+  goalNotice: ref(""),
+  goals: ref([]),
+  goalTitle: ref(""),
+  goalDescription: ref(""),
+  messages: ref([]),
+  chatMode: ref(false),
+  statusText: ref("Microphone off — tap to start"),
+  voiceState: ref("off"),
+  transcriptPreview: ref("Tap the microphone and speak"),
+  transcriptActive: ref(false),
+  draftVisible: ref(false),
+  draftText: ref(""),
+  draftHint: ref("Microphone off · Nothing is sent until you choose Send."),
+  voiceMode: ref(false),
+  voiceLabel: ref("Start hands-free"),
+  prompt: ref(""),
+  sendDisabled: ref(false),
+  sendDraftDisabled: ref(true),
+  resumeDisabled: ref(false),
+  discardDisabled: ref(false),
+};
 
 let sessions = [];
 let goals = [];
-let chatMode = false;
-
-modeToggle.addEventListener("click", () => {
-  chatMode = !chatMode;
-  conversation.classList.toggle("hidden", !chatMode);
-  conversation.classList.toggle("flex", chatMode);
-  voiceScreen.classList.toggle("hidden", chatMode);
-  keyboardInput.classList.toggle("hidden", !chatMode);
-  modeToggle.textContent = chatMode ? "Voice" : "Chat";
-  modeToggle.setAttribute("aria-label", chatMode ? "Back to voice note" : "Open chat history");
-  modeToggle.setAttribute("aria-pressed", String(chatMode));
-});
 let messages = [];
 let selected = null;
 let historySession = null;
@@ -53,8 +61,45 @@ let microphoneTimer;
 let voiceGeneration = 0;
 let activePlaybackCancel;
 let seenMessages = new Set();
-
 let userSub = null;
+let conversation;
+let sessionPicker;
+let player;
+
+const app = mount(document.querySelector("#app-root"), {
+  template: document.querySelector("#app-template"),
+  setup: () => ({
+    ...view,
+    toggleChat,
+    refreshSessions,
+    startNewSession,
+    selectSession,
+    setGoalTitle,
+    setGoalDescription,
+    addGoal,
+    applyPlan,
+    updateGoal,
+    deleteGoal,
+    sendDraft,
+    resumeDictation,
+    discardDraft,
+    toggleVoice,
+    updateDraft,
+    updatePrompt,
+    sendTypedPrompt,
+  }),
+});
+
+async function prepareApp() {
+  await app.ready;
+  conversation = document.querySelector("#conversation");
+  sessionPicker = document.querySelector("#sessionPicker");
+  player = document.querySelector("#player");
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }
+  await init();
+}
 
 async function request(path, options) {
   const response = await fetch(path, { cache: "no-store", ...options });
@@ -75,7 +120,7 @@ function messageDate(value) {
 }
 
 function showStatus(text, state) {
-  voiceStatus.textContent = text;
+  view.statusText.value = text;
   state ||= speaking
     ? "speaking"
     : sending || waitingForReply
@@ -84,35 +129,33 @@ function showStatus(text, state) {
         ? "listening"
         : recognitionStarting
           ? "starting"
-          : !draftPanel.hidden
+          : view.draftVisible.value
             ? "review"
             : "off";
-  voiceStatus.dataset.state = state;
-  voiceButton.dataset.state = state;
-  voiceButton.setAttribute("aria-pressed", String(voiceMode));
-  voiceLabel.textContent = voiceMode ? "Stop voice" : "Start hands-free";
-  document.querySelector("#sendDraft").disabled = sending || waitingForReply || speaking || !voiceDraft.value.trim();
-  document.querySelector("#resumeVoice").disabled = sending || waitingForReply || speaking;
-  document.querySelector("#discardDraft").disabled = sending;
-  document.querySelector("#send").disabled = sending || waitingForReply || speaking;
+  view.voiceState.value = state;
+  view.voiceMode.value = voiceMode;
+  view.voiceLabel.value = voiceMode ? "Stop voice" : "Start hands-free";
+  view.sendDraftDisabled.value = sending || waitingForReply || speaking || !view.draftText.value.trim();
+  view.resumeDisabled.value = sending || waitingForReply || speaking;
+  view.discardDisabled.value = sending;
+  view.sendDisabled.value = sending || waitingForReply || speaking;
 }
 
 async function checkAuthAndProperties() {
   try {
     const { data } = await request("/api/auth/status");
     userSub = data.user || null;
-    document.querySelector("#user").textContent = userSub || "";
+    view.authUser.value = userSub || "";
   } catch {
     userSub = null;
-    document.querySelector("#user").textContent = "";
+    view.authUser.value = "";
   }
 }
 
 function updateTranscript() {
   const transcript = [utterance, interimTranscript].filter(Boolean).join(" ");
-  transcriptPreview.textContent = transcript || (draftPanel.hidden ? "Tap the microphone and speak" : "");
-  transcriptPreview.classList.toggle("text-[#8090aa]", !transcript);
-  transcriptPreview.classList.toggle("text-[#f3f6fb]", Boolean(transcript));
+  view.transcriptActive.value = Boolean(transcript);
+  view.transcriptPreview.value = transcript || (view.draftVisible.value ? "" : "Tap the microphone and speak");
 }
 
 function showDraft() {
@@ -128,13 +171,11 @@ function showDraft() {
   if (!utterance.trim()) {
     return;
   }
-  if (draftPanel.hidden || draftSession !== selected) {
+  if (!view.draftVisible.value || draftSession !== selected) {
     draftSession = selected;
-    voiceDraft.value = utterance.trim();
+    view.draftText.value = utterance.trim();
   }
-  draftPanel.hidden = false;
-  transcriptPreview.setAttribute("aria-live", "off");
-  transcriptPreview.hidden = true;
+  view.draftVisible.value = true;
   stopCapture();
   listening = false;
   showStatus("Review your draft — microphone off");
@@ -145,11 +186,9 @@ function resumeDictation() {
     return;
   }
   voiceMode = true;
-  utterance = voiceDraft.value.trim();
+  utterance = view.draftText.value.trim();
   interimTranscript = "";
-  draftPanel.hidden = true;
-  transcriptPreview.hidden = false;
-  transcriptPreview.setAttribute("aria-live", "polite");
+  view.draftVisible.value = false;
   updateTranscript();
   startRecognition();
 }
@@ -160,12 +199,10 @@ function clearDraft() {
   sendTimer = undefined;
   reviewPending = false;
   draftSession = null;
-  draftPanel.hidden = true;
-  voiceDraft.value = "";
+  view.draftVisible.value = false;
+  view.draftText.value = "";
   utterance = "";
   interimTranscript = "";
-  transcriptPreview.hidden = false;
-  transcriptPreview.setAttribute("aria-live", "polite");
   updateTranscript();
 }
 
@@ -184,7 +221,7 @@ function stopCapture() {
 
 function requestReview() {
   sendTimer = undefined;
-  if (!voiceMode || !draftPanel.hidden || sending || waitingForReply || speaking) {
+  if (!voiceMode || view.draftVisible.value || sending || waitingForReply || speaking) {
     return;
   }
   reviewPending = true;
@@ -196,23 +233,6 @@ function requestReview() {
 
 function messageKey(message) {
   return message.id || `${message.role}:${message.time || ""}:${message.text}`;
-}
-
-function mergeTranscript(previous, next) {
-  const previousText = previous.trim();
-  const nextText = next.trim();
-  if (!previousText) {
-    return nextText;
-  }
-  if (!nextText) {
-    return previousText;
-  }
-  const previousWords = previousText.split(/\s+/);
-  const nextWords = nextText.split(/\s+/);
-  const cumulative =
-    nextWords.length > previousWords.length &&
-    previousWords.every((word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(nextWords[index]));
-  return cumulative ? nextText : `${previousText} ${nextText}`;
 }
 
 function normalizeTranscriptWord(word) {
@@ -227,21 +247,12 @@ function renderSessions() {
     return;
   }
   sessionSignature = signature;
-  list.replaceChildren();
-  for (const session of sessions) {
-    const button = document.createElement("button");
-    const name = document.createElement("span");
-    const state = document.createElement("small");
-    button.type = "button";
-    button.className = `grid w-full gap-1 rounded-lg border p-3 text-left transition hover:border-mint focus-visible:outline-2 focus-visible:outline-mint ${session.id === selected ? "border-mint bg-ink" : "border-transparent bg-panel"}`;
-    name.className = "overflow-hidden text-ellipsis whitespace-nowrap";
-    state.className = "overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted";
-    name.textContent = session.title;
-    state.textContent = session.status === "running" ? "Working" : session.directory || "";
-    button.append(name, state);
-    button.addEventListener("click", () => selectSession(session.id));
-    list.append(button);
-  }
+  view.sessions.value = sessions;
+  view.selectedId.value = selected;
+}
+
+function toggleChat() {
+  view.chatMode.value = !view.chatMode.value;
 }
 
 function renderMarkdown(text) {
@@ -256,35 +267,19 @@ function renderMessages() {
   messageSignature = signature;
   const previousScroll = conversation.scrollTop;
   const nearBottom = conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight < 120;
-  conversation.replaceChildren();
-  if (messages.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "m-auto p-6 text-center text-muted";
-    empty.textContent = selected ? "No messages in this session yet." : "Choose a session to begin.";
-    conversation.append(empty);
-    return;
-  }
-  for (const message of messages) {
-    const article = document.createElement("article");
-    const role = document.createElement("span");
-    const text = document.createElement("p");
-    const time = document.createElement("time");
-    article.className = `max-w-[88%] rounded-xl border border-line bg-panel p-4 ${message.role === "user" ? "ml-auto border-mint/40 bg-ink" : "mr-auto"}`;
-    role.className = "text-xs font-semibold text-mint";
-    role.textContent = message.role === "assistant" ? "Assistant" : "You";
-    text.className =
-      "my-2 whitespace-pre-wrap break-words leading-6 [&_a]:text-mint [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-black [&_pre]:p-3 [&_code]:font-mono [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5";
-    text.innerHTML = renderMarkdown(message.text);
-    time.className = "text-[10px] text-muted";
-    time.textContent = messageDate(message.time);
-    article.append(role, text, time);
-    conversation.append(article);
-  }
-  if (nearBottom) {
-    conversation.scrollTop = conversation.scrollHeight;
-  } else {
-    conversation.scrollTop = previousScroll;
-  }
+  view.selectedId.value = selected;
+  view.messages.value = messages.map((message) => ({
+    ...message,
+    html: renderMarkdown(message.text),
+    timeLabel: messageDate(message.time),
+  }));
+  void nextTick().then(() => {
+    if (nearBottom) {
+      conversation.scrollTop = conversation.scrollHeight;
+    } else {
+      conversation.scrollTop = previousScroll;
+    }
+  });
 }
 
 async function loadMessages() {
@@ -330,13 +325,14 @@ async function refreshSessions() {
         sendRequest++;
         sending = false;
         selected = next;
-        showStatus(voiceStatus.textContent);
+        view.selectedId.value = selected;
+        showStatus(view.statusText.value);
       }
     }
     renderSessions();
     const session = sessions.find((item) => item.id === selected);
-    document.querySelector("#sessionTitle").textContent = session?.title || "No sessions found";
-    document.querySelector("#sessionMeta").textContent = session
+    view.sessionTitle.value = session?.title || "No sessions found";
+    view.sessionMeta.value = session
       ? `${session.status === "running" ? "Working" : "Ready"} · ${sessions.length} sessions`
       : data.error || "OpenCode is unavailable";
     if (previous !== selected) {
@@ -350,7 +346,7 @@ async function refreshSessions() {
     }
     await maybeReadReply();
   } catch {
-    document.querySelector("#sessionMeta").textContent = "Connection unavailable";
+    view.sessionMeta.value = "Connection unavailable";
   } finally {
     sessionsRequest = false;
   }
@@ -361,16 +357,17 @@ async function selectSession(id) {
   sendRequest++;
   sending = false;
   selected = id;
+  view.selectedId.value = selected;
   showStatus("Microphone off");
   historySession = null;
   messages = [];
   renderMessages();
   localStorage.setItem("openvoice.session", id);
-  document.querySelector("#sessionPicker").open = false;
+  sessionPicker.open = false;
   renderSessions();
   const session = sessions.find((item) => item.id === selected);
-  document.querySelector("#sessionTitle").textContent = session?.title || "Session";
-  document.querySelector("#sessionMeta").textContent = session?.directory || "";
+  view.sessionTitle.value = session?.title || "Session";
+  view.sessionMeta.value = session?.directory || "";
   waitingForReply = false;
   clearTimeout(replyTimer);
   await loadMessages();
@@ -525,7 +522,7 @@ async function sendMessage(text) {
   const generation = voiceGeneration;
   const sessionID = selected;
   const requestID = ++sendRequest;
-  if (draftPanel.hidden === false && draftSession !== sessionID) {
+  if (view.draftVisible.value && draftSession !== sessionID) {
     return;
   }
   sending = true;
@@ -547,7 +544,7 @@ async function sendMessage(text) {
     }
     sending = false;
     clearDraft();
-    document.querySelector("#prompt").value = "";
+    view.prompt.value = "";
     await loadMessages();
     if (generation !== voiceGeneration || selected !== sessionID) {
       return;
@@ -569,11 +566,11 @@ async function sendMessage(text) {
     if (generation === voiceGeneration && selected === sessionID) {
       sending = false;
       waitingForReply = false;
-      voiceDraft.value = message;
+      view.draftText.value = message;
       utterance = message;
       interimTranscript = "";
       draftSession = sessionID;
-      draftPanel.hidden = false;
+      view.draftVisible.value = true;
       stopVoice(`Message not sent: ${error.message}. Draft preserved.`, { error: true });
     } else if (requestID === sendRequest && selected === sessionID) {
       showStatus(`Message not sent: ${error.message}. Check your draft.`, "error");
@@ -581,7 +578,7 @@ async function sendMessage(text) {
   } finally {
     if (requestID === sendRequest && selected === sessionID) {
       sending = false;
-      showStatus(voiceStatus.textContent, voiceStatus.dataset.state === "error" ? "error" : undefined);
+      showStatus(view.statusText.value, view.voiceState.value === "error" ? "error" : undefined);
     }
     if (generation === voiceGeneration && voiceMode && !waitingForReply) {
       startRecognition();
@@ -595,7 +592,7 @@ function startRecognition() {
     !voiceMode ||
     listening ||
     recognitionStarting ||
-    !draftPanel.hidden ||
+    view.draftVisible.value ||
     sending ||
     speaking ||
     waitingForReply ||
@@ -616,7 +613,7 @@ function startRecognition() {
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.onresult = (event) => {
-    if (!isCurrent() || !draftPanel.hidden || sending || waitingForReply || speaking) {
+    if (!isCurrent() || view.draftVisible.value || sending || waitingForReply || speaking) {
       return;
     }
     const final = [];
@@ -633,12 +630,22 @@ function startRecognition() {
         interim.push(text);
       }
     }
-    utterance = final.reduce(mergeTranscript, base);
-    const withInterim = interim.reduce(mergeTranscript, utterance);
-    interimTranscript = withInterim
-      .split(/\s+/)
-      .slice(utterance.trim() ? utterance.trim().split(/\s+/).length : 0)
-      .join(" ");
+    // SpeechRecognition results are a snapshot: finalized result segments are
+    // independent phrases, while a revised interim result replaces its earlier
+    // snapshot. Do not prefix-deduplicate separate finalized segments.
+    const finalTranscript = final.join(" ").trim();
+    const interimResult = interim.join(" ").trim();
+    const revisedInterim =
+      interimResult &&
+      finalTranscript &&
+      interimResult.split(/\s+/).length > finalTranscript.split(/\s+/).length &&
+      finalTranscript
+        .split(/\s+/)
+        .every(
+          (word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(interimResult.split(/\s+/)[index]),
+        );
+    utterance = [base, revisedInterim ? interimResult : finalTranscript].filter(Boolean).join(" ").trim();
+    interimTranscript = revisedInterim ? "" : interimResult;
     updateTranscript();
     if ((utterance || interimTranscript) && !reviewPending) {
       clearTimeout(sendTimer);
@@ -668,7 +675,7 @@ function startRecognition() {
     clearTimeout(microphoneTimer);
     if (utterance || interimTranscript) {
       showDraft();
-    } else if (voiceMode && !sending && !speaking && !waitingForReply && draftPanel.hidden) {
+    } else if (voiceMode && !sending && !speaking && !waitingForReply && !view.draftVisible.value) {
       clearTimeout(sendTimer);
       sendTimer = undefined;
       clearTimeout(restartTimer);
@@ -679,7 +686,7 @@ function startRecognition() {
     }
   };
   currentRecognition.onstart = () => {
-    if (!isCurrent() || reviewPending || !draftPanel.hidden) {
+    if (!isCurrent() || reviewPending || view.draftVisible.value) {
       return;
     }
     clearTimeout(microphoneTimer);
@@ -719,19 +726,16 @@ function stopVoice(message = "Microphone off — voice paused", { preserveDraft 
   stopCapture();
   player.pause();
   player.removeAttribute("src");
-  voiceButton.dataset.state = error ? "error" : "off";
-  voiceButton.setAttribute("aria-pressed", "false");
-  voiceLabel.textContent = "Start hands-free";
   recognitionStarting = false;
   if (!preserveDraft) {
     clearDraft();
-  } else if (draftPanel.hidden && (utterance || interimTranscript)) {
+  } else if (!view.draftVisible.value && (utterance || interimTranscript)) {
     showDraft();
   }
   showStatus(message, error ? "error" : undefined);
 }
 
-voiceButton.addEventListener("click", () => {
+function toggleVoice() {
   if (voiceMode) {
     stopVoice();
     return;
@@ -742,7 +746,7 @@ voiceButton.addEventListener("click", () => {
   }
   if (!selected) {
     showStatus("Choose a session first.");
-    document.querySelector("#sessionPicker").open = true;
+    sessionPicker.open = true;
     return;
   }
   if (historySession !== selected) {
@@ -755,23 +759,33 @@ voiceButton.addEventListener("click", () => {
   }
   voiceMode = true;
   seenMessages = new Set(messages.map(messageKey));
-  if (!draftPanel.hidden) {
+  if (view.draftVisible.value) {
     resumeDictation();
   } else {
     startRecognition();
   }
-});
+}
 
-document.querySelector("#sendDraft").addEventListener("click", () => {
+function sendDraft() {
   if (draftSession === selected) {
-    sendMessage(voiceDraft.value);
+    sendMessage(view.draftText.value);
   }
-});
-voiceDraft.addEventListener("input", () => {
-  showStatus(voiceStatus.textContent, voiceStatus.dataset.state);
-});
-document.querySelector("#resumeVoice").addEventListener("click", resumeDictation);
-document.querySelector("#discardDraft").addEventListener("click", () => {
+}
+
+function updateDraft(value) {
+  view.draftText.value = value;
+  showStatus(view.statusText.value, view.voiceState.value);
+}
+
+function updatePrompt(value) {
+  view.prompt.value = value;
+}
+
+function sendTypedPrompt() {
+  sendMessage(view.prompt.value);
+}
+
+function discardDraft() {
   if (sending) {
     return;
   }
@@ -781,10 +795,9 @@ document.querySelector("#discardDraft").addEventListener("click", () => {
   } else {
     showStatus("Draft discarded — microphone off");
   }
-});
+}
 
-document.querySelector("#refresh").addEventListener("click", refreshSessions);
-document.querySelector("#newSession").addEventListener("click", async () => {
+async function startNewSession() {
   try {
     const { data } = await request("/api/sessions", {
       method: "POST",
@@ -799,48 +812,16 @@ document.querySelector("#newSession").addEventListener("click", async () => {
   } catch (error) {
     showStatus(error.message, "error");
   }
-});
-document.querySelector("#composer").addEventListener("submit", (event) => {
-  event.preventDefault();
-  sendMessage(document.querySelector("#prompt").value);
-});
+}
 
 async function loadGoals() {
   try {
     const { data } = await request("/api/goals");
     goals = data;
-    document.querySelector("#goalCount").textContent = goals.length ? `(${goals.length})` : "(none yet)";
-    const target = document.querySelector("#goals");
-    target.replaceChildren();
-    for (const goal of goals) {
-      const row = document.createElement("div");
-      const text = document.createElement("span");
-      const status = document.createElement("select");
-      const remove = document.createElement("button");
-      row.className = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel p-2";
-      text.className = "min-w-0 flex-1 break-words text-xs";
-      status.className =
-        "max-w-28 rounded border border-line bg-ink p-2 text-sm text-paper focus-visible:outline-2 focus-visible:outline-mint";
-      text.textContent = goal.description ? `${goal.title} — ${goal.description}` : goal.title;
-      for (const value of ["open", "in-progress", "done"]) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = value;
-        option.selected = goal.status === value;
-        status.append(option);
-      }
-      status.addEventListener("change", () => updateGoal(goal.id, { status: status.value }));
-      remove.type = "button";
-      remove.className =
-        "min-h-10 min-w-10 rounded-lg border border-line bg-panel text-xl hover:bg-line focus-visible:outline-2 focus-visible:outline-mint";
-      remove.textContent = "×";
-      remove.setAttribute("aria-label", `Delete ${goal.title}`);
-      remove.addEventListener("click", () => deleteGoal(goal.id));
-      row.append(text, status, remove);
-      target.append(row);
-    }
+    view.goals.value = goals;
+    view.goalCount.value = goals.length ? `(${goals.length})` : "(none yet)";
   } catch (error) {
-    document.querySelector("#goalNotice").textContent = error.message;
+    view.goalNotice.value = error.message;
   }
 }
 
@@ -853,7 +834,7 @@ async function updateGoal(id, patch) {
     });
     await loadGoals();
   } catch (error) {
-    document.querySelector("#goalNotice").textContent = error.message;
+    view.goalNotice.value = error.message;
   }
 }
 
@@ -862,29 +843,37 @@ async function deleteGoal(id) {
     await request(`/api/goals/${encodeURIComponent(id)}`, { method: "DELETE" });
     await loadGoals();
   } catch (error) {
-    document.querySelector("#goalNotice").textContent = error.message;
+    view.goalNotice.value = error.message;
   }
 }
 
-document.querySelector("#goalForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
+function setGoalTitle(value) {
+  view.goalTitle.value = value;
+}
+
+function setGoalDescription(value) {
+  view.goalDescription.value = value;
+}
+
+async function addGoal() {
   try {
     await request("/api/goals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: document.querySelector("#goalTitle").value,
-        description: document.querySelector("#goalDescription").value,
+        title: view.goalTitle.value,
+        description: view.goalDescription.value,
       }),
     });
-    document.querySelector("#goalForm").reset();
+    view.goalTitle.value = "";
+    view.goalDescription.value = "";
     await loadGoals();
   } catch (error) {
-    document.querySelector("#goalNotice").textContent = error.message;
+    view.goalNotice.value = error.message;
   }
-});
+}
 
-document.querySelector("#applyPlan").addEventListener("click", async () => {
+async function applyPlan() {
   const sessionIds = sessions.map((session) => session.id);
   if (!sessionIds.length || !confirm(`Send the current plan to all ${sessionIds.length} top-level sessions?`)) {
     return;
@@ -895,26 +884,16 @@ document.querySelector("#applyPlan").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionIds }),
     });
-    document.querySelector("#goalNotice").textContent = `Sent to ${data.sent}; ${data.failed} failed.`;
+    view.goalNotice.value = `Sent to ${data.sent}; ${data.failed} failed.`;
   } catch (error) {
-    document.querySelector("#goalNotice").textContent = error.message;
+    view.goalNotice.value = error.message;
   }
-});
+}
 
 async function init() {
-  try {
-    await checkAuthAndProperties();
-    document.querySelector("#user").textContent = userSub || "";
-  } catch {
-    document.querySelector("#user").textContent = "";
-  }
+  await checkAuthAndProperties();
   await Promise.all([refreshSessions(), loadGoals()]);
   setInterval(refreshSessions, 2500);
 }
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
-}
-init();
-import { marked } from "marked";
-import DOMPurify from "dompurify";
+void prepareApp();
