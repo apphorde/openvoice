@@ -230,8 +230,10 @@ test("stop and delayed recognizer events preserve editable review; resume and di
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
   await page.evaluate(() => window.emitRecognitionStart());
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
-  await page.evaluate(() => window.emit("Discard this"));
-  await page.waitForTimeout(2_900);
+  await page.evaluate(() => window.emitSnapshot([{ text: "Discard this" }]));
+  await page.evaluate(() => window.emitSnapshot([{ text: "Discard this now" }]));
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("Corrected while stopped Discard this now");
   await page.getByRole("button", { name: "Discard" }).click();
   await expect(page.locator("#voiceDraft")).toBeHidden();
   expect(sent).toEqual([]);
@@ -475,6 +477,7 @@ test("sanitized Markdown cannot inject active Li3 bindings", async ({ page }) =>
   await page.getByRole("button", { name: "Open chat history" }).click();
   const conversation = page.locator("#conversation");
   await expect(conversation.locator("article")).toHaveCount(1);
+  await expect(conversation.locator("article > div")).toHaveCSS("font-size", "14px");
   await expect(conversation.locator("script, [on-click]")).toHaveCount(0);
   await expect(conversation.getByRole("button", { name: "Click me" })).toHaveCount(1);
   await conversation.getByRole("button", { name: "Click me" }).click();
@@ -491,6 +494,28 @@ test("cumulative Chrome revisions replace interim text instead of appending it",
   }
   await page.waitForTimeout(2_950);
   await expect(page.locator("#voiceDraft")).toHaveValue("this is an example");
+  expect(sent).toEqual([]);
+});
+
+test("cumulative full-text result snapshots append only words not already shown", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  for (const phrase of [
+    "let's",
+    "let's review",
+    "let's review the",
+    "let's review the overall",
+    "let's review the overall navigation",
+    "let's review the overall navigation instruction",
+    "let's review the overall navigation instruction for",
+    "let's review the overall navigation instruction for a while",
+  ]) {
+    await page.evaluate((text) => window.emitSnapshot([{ text }]), phrase);
+    await expect(page.locator("#transcriptPreview")).toHaveText(phrase);
+  }
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("let's review the overall navigation instruction for a while");
   expect(sent).toEqual([]);
 });
 

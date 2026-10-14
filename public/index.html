@@ -185,7 +185,7 @@
                 >{{ message.role === 'assistant' ? 'Assistant' : 'You' }}</span
               >
               <div
-                class="my-2 whitespace-pre-wrap break-words leading-6 [&_a]:text-mint [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-black [&_pre]:p-3 [&_code]:font-mono [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5"
+                class="my-2 whitespace-pre-wrap break-words text-sm leading-5 [&_a]:text-mint [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-black [&_pre]:p-3 [&_code]:font-mono [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5"
                 bind-innerhtml="message.html"
               ></div>
               <time class="text-[10px] text-muted">{{ message.timeLabel }}</time>

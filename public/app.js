@@ -158,6 +158,21 @@ function updateTranscript() {
   view.transcriptPreview.value = transcript || (view.draftVisible.value ? "" : "Tap the microphone and speak");
 }
 
+function transcriptAfterExistingText(transcript, existingText) {
+  const words = transcript.trim().split(/\s+/).filter(Boolean);
+  const existingWords = existingText.trim().split(/\s+/).filter(Boolean);
+  if (existingWords.length === 0) {
+    return words.join(" ");
+  }
+  if (
+    existingWords.length <= words.length &&
+    existingWords.every((word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(words[index]))
+  ) {
+    return words.slice(existingWords.length).join(" ");
+  }
+  return null;
+}
+
 function showDraft() {
   clearTimeout(sendTimer);
   clearTimeout(reviewTimer);
@@ -604,7 +619,8 @@ function startRecognition() {
   const currentRecognition = recognition;
   const generation = voiceGeneration;
   const recognitionSession = selected;
-  const base = utterance;
+  const base = utterance.trim();
+  let previousEventTranscript = "";
   const isCurrent = () =>
     voiceMode &&
     generation === voiceGeneration &&
@@ -616,36 +632,34 @@ function startRecognition() {
     if (!isCurrent() || view.draftVisible.value || sending || waitingForReply || speaking) {
       return;
     }
-    const final = [];
-    const interim = [];
+    const fullTranscript = [];
     for (let i = 0; i < event.results.length; i++) {
       const result = event.results[i];
       const text = result[0]?.transcript?.trim();
       if (!text) {
         continue;
       }
-      if (result.isFinal) {
-        final.push(text);
-      } else {
-        interim.push(text);
-      }
+      fullTranscript.push(text);
     }
-    // SpeechRecognition results are a snapshot: finalized result segments are
-    // independent phrases, while a revised interim result replaces its earlier
-    // snapshot. Do not prefix-deduplicate separate finalized segments.
-    const finalTranscript = final.join(" ").trim();
-    const interimResult = interim.join(" ").trim();
-    const revisedInterim =
-      interimResult &&
-      finalTranscript &&
-      interimResult.split(/\s+/).length > finalTranscript.split(/\s+/).length &&
-      finalTranscript
-        .split(/\s+/)
-        .every(
-          (word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(interimResult.split(/\s+/)[index]),
-        );
-    utterance = [base, revisedInterim ? interimResult : finalTranscript].filter(Boolean).join(" ").trim();
-    interimTranscript = revisedInterim ? "" : interimResult;
+    // Results are a complete snapshot. Compare it with the current transcript
+    // and append only its new suffix. Some recognition restarts report text
+    // relative to that recognizer rather than the existing editable draft, so
+    // also diff against this recognizer's previous snapshot in that case.
+    const eventTranscript = fullTranscript.join(" ").trim();
+    const existingText = [utterance, interimTranscript].filter(Boolean).join(" ").trim();
+    let newlyRecognized = transcriptAfterExistingText(eventTranscript, existingText);
+    if (newlyRecognized === null) {
+      newlyRecognized = transcriptAfterExistingText(eventTranscript, previousEventTranscript);
+    }
+    if (newlyRecognized !== null) {
+      utterance = [existingText, newlyRecognized].filter(Boolean).join(" ").trim();
+    } else {
+      // A changed prefix is a corrected snapshot, not another phrase to append.
+      const eventAfterBase = transcriptAfterExistingText(eventTranscript, base);
+      utterance = [base, eventAfterBase === null ? eventTranscript : eventAfterBase].filter(Boolean).join(" ").trim();
+    }
+    interimTranscript = "";
+    previousEventTranscript = eventTranscript;
     updateTranscript();
     if ((utterance || interimTranscript) && !reviewPending) {
       clearTimeout(sendTimer);
