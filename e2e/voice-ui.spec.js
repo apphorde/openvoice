@@ -590,6 +590,41 @@ test("cumulative full-text result snapshots append only words not already shown"
   expect(sent).toEqual([]);
 });
 
+test("revised cumulative interim snapshots replace their prior text", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  const phrase = "this is me speaking on a new session here";
+  const revisions = [
+    ["this", "this"],
+    ["this this is", "this is"],
+    ["this this is this is me", "this is me"],
+    ["this this is this is me this is me speaking", "this is me speaking"],
+    ["this this is this is me this is me speaking this is me speaking on", "this is me speaking on"],
+    [
+      "this this is this is me this is me speaking this is me speaking on this is me speaking on a new session here",
+      phrase,
+    ],
+  ];
+  for (const [snapshot, expected] of revisions) {
+    await page.evaluate((text) => window.emitSnapshot([{ text }]), snapshot);
+    await expect(page.locator("#transcriptPreview")).toHaveText(expected);
+  }
+  await page.evaluate((text) => window.emitSnapshot([{ text, final: true }]), revisions.at(-1)[0]);
+  await expect(page.locator("#transcriptPreview")).toHaveText(phrase);
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue(phrase);
+  expect(sent).toEqual([]);
+});
+
+test("an interim result containing finalized text is not joined to itself", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emitSnapshot([{ text: "this", final: true }, { text: "this is me" }]));
+  await expect(page.locator("#transcriptPreview")).toHaveText("this is me");
+});
+
 test("Chrome incremental result events retain final segments and revise only current interim", async ({ page }) => {
   const { sent } = await setup(page);
   await page.getByRole("button", { name: "Start hands-free" }).click();
@@ -609,6 +644,16 @@ test("repeated spoken words in separate Chrome results are preserved", async ({ 
   await page.waitForTimeout(2_950);
   await expect(page.locator("#voiceDraft")).toHaveValue("go go");
   expect(sent).toEqual([]);
+});
+
+test("final repeated segments remain distinct when they replace an interim result", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await page.evaluate(() => window.emitSnapshot([{ text: "go", final: false }]));
+  await page.evaluate(() => window.emitSegments([{ text: "go" }, { text: "go" }]));
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("go go");
 });
 
 test("a repeated prefix across independent final Chrome segments is preserved", async ({ page }) => {

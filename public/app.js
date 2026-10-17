@@ -654,7 +654,8 @@ function startRecognition() {
   const generation = voiceGeneration;
   const recognitionSession = selected;
   const base = utterance.trim();
-  let previousEventTranscript = "";
+  let previousInterimSnapshot = "";
+  let deduplicatedInterimSnapshot = "";
   const isCurrent = () =>
     voiceMode &&
     generation === voiceGeneration &&
@@ -666,34 +667,62 @@ function startRecognition() {
     if (!isCurrent() || view.draftVisible.value || sending || waitingForReply || speaking) {
       return;
     }
-    const fullTranscript = [];
+    const finalTranscript = [];
+    let interimText = "";
     for (let i = 0; i < event.results.length; i++) {
       const result = event.results[i];
       const text = result[0]?.transcript?.trim();
       if (!text) {
         continue;
       }
-      fullTranscript.push(text);
+      if (result.isFinal) {
+        finalTranscript.push(text);
+      } else {
+        interimText = text;
+      }
     }
-    // Results are a complete snapshot. Compare it with the current transcript
-    // and append only its new suffix. Some recognition restarts report text
-    // relative to that recognizer rather than the existing editable draft, so
-    // also diff against this recognizer's previous snapshot in that case.
-    const eventTranscript = fullTranscript.join(" ").trim();
-    const existingText = [utterance, interimTranscript].filter(Boolean).join(" ").trim();
-    let newlyRecognized = transcriptAfterExistingText(eventTranscript, existingText);
-    if (newlyRecognized === null) {
-      newlyRecognized = transcriptAfterExistingText(eventTranscript, previousEventTranscript);
+    let finalText = finalTranscript.join(" ").trim();
+    const deduplicateCumulativeInterim = (snapshot) => {
+      const snapshotWords = snapshot.split(/\s+/).filter(Boolean);
+      const previousWords = previousInterimSnapshot.split(/\s+/).filter(Boolean);
+      const deduplicatedWords = deduplicatedInterimSnapshot.split(/\s+/).filter(Boolean);
+      const isExtension =
+        previousWords.length > 0 &&
+        previousWords.length <= snapshotWords.length &&
+        previousWords.every(
+          (word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(snapshotWords[index]),
+        );
+      if (!isExtension) {
+        previousInterimSnapshot = snapshot;
+        deduplicatedInterimSnapshot = snapshot;
+        return snapshot;
+      }
+      const delta = snapshotWords.slice(previousWords.length);
+      let overlap = Math.min(deduplicatedWords.length, delta.length);
+      while (
+        overlap > 0 &&
+        !deduplicatedWords
+          .slice(-overlap)
+          .every((word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(delta[index]))
+      ) {
+        overlap -= 1;
+      }
+      deduplicatedInterimSnapshot = [...deduplicatedWords, ...delta.slice(overlap)].join(" ");
+      previousInterimSnapshot = snapshot;
+      return deduplicatedInterimSnapshot;
+    };
+    const cleanedInterimText = interimText ? deduplicateCumulativeInterim(interimText) : "";
+    if (!interimText && finalText && event.results.length === 1 && previousInterimSnapshot) {
+      finalText = deduplicateCumulativeInterim(finalText);
     }
-    if (newlyRecognized !== null) {
-      utterance = [existingText, newlyRecognized].filter(Boolean).join(" ").trim();
-    } else {
-      // A changed prefix is a corrected snapshot, not another phrase to append.
-      const eventAfterBase = transcriptAfterExistingText(eventTranscript, base);
-      utterance = [base, eventAfterBase === null ? eventTranscript : eventAfterBase].filter(Boolean).join(" ").trim();
-    }
-    interimTranscript = "";
-    previousEventTranscript = eventTranscript;
+    // SpeechRecognitionEvent.results is a complete snapshot, not a stream of
+    // text deltas. Rebuild the draft from that snapshot on every event so a
+    // revised interim result cannot be appended to its previous version.
+    // Chrome may also repeat the finalized prefix inside its interim result;
+    // in that case the interim text already represents the whole snapshot.
+    const interimIncludesFinal = interimText && transcriptAfterExistingText(cleanedInterimText, finalText) !== null;
+    utterance = [base, interimIncludesFinal ? "" : finalText].filter(Boolean).join(" ").trim();
+    interimTranscript = cleanedInterimText;
     updateTranscript();
     if ((utterance || interimTranscript) && !reviewPending) {
       clearTimeout(sendTimer);
