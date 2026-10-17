@@ -617,6 +617,28 @@ test("revised cumulative interim snapshots replace their prior text", async ({ p
   expect(sent).toEqual([]);
 });
 
+test("repeated growing phrase echoes collapse inside one interim snapshot", async ({ page }) => {
+  const { sent } = await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  const revisions = [
+    ["let's", "let's"],
+    ["let's let's see", "let's see"],
+    ["let's let's see let's see if", "let's see if"],
+    ["let's let's see let's see if let's see if that", "let's see if that"],
+    ["let's let's see let's see if let's see if that let's see if that worked", "let's see if that worked"],
+  ];
+  for (const [text, expected] of revisions) {
+    await page.evaluate((snapshot) => window.emitSnapshot([{ text: snapshot }]), text);
+    await expect(page.locator("#transcriptPreview")).toHaveText(expected);
+  }
+  const repeatedSnapshot = revisions.at(-1)[0];
+  await page.evaluate((text) => window.emitSnapshot([{ text, final: true }]), repeatedSnapshot);
+  await page.waitForTimeout(2_950);
+  await expect(page.locator("#voiceDraft")).toHaveValue("let's see if that worked");
+  expect(sent).toEqual([]);
+});
+
 test("an interim result containing finalized text is not joined to itself", async ({ page }) => {
   await setup(page);
   await page.getByRole("button", { name: "Start hands-free" }).click();

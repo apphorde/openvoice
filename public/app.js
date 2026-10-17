@@ -199,6 +199,32 @@ function transcriptAfterExistingText(transcript, existingText) {
   return null;
 }
 
+function collapseRepeatedTranscriptPhrases(transcript) {
+  const words = [];
+  for (const word of transcript.split(/\s+/).filter(Boolean)) {
+    words.push(word);
+    let collapsed = true;
+    while (collapsed) {
+      collapsed = false;
+      for (let length = Math.min(32, Math.floor(words.length / 2)); length > 0; length--) {
+        const start = words.length - length * 2;
+        const repeated = words
+          .slice(start, start + length)
+          .every(
+            (previous, index) =>
+              normalizeTranscriptWord(previous) === normalizeTranscriptWord(words[start + length + index]),
+          );
+        if (repeated) {
+          words.splice(start + length, length);
+          collapsed = true;
+          break;
+        }
+      }
+    }
+  }
+  return words.join(" ");
+}
+
 function showDraft() {
   clearTimeout(sendTimer);
   clearTimeout(reviewTimer);
@@ -654,8 +680,6 @@ function startRecognition() {
   const generation = voiceGeneration;
   const recognitionSession = selected;
   const base = utterance.trim();
-  let previousInterimSnapshot = "";
-  let deduplicatedInterimSnapshot = "";
   const isCurrent = () =>
     voiceMode &&
     generation === voiceGeneration &&
@@ -682,38 +706,9 @@ function startRecognition() {
       }
     }
     let finalText = finalTranscript.join(" ").trim();
-    const deduplicateCumulativeInterim = (snapshot) => {
-      const snapshotWords = snapshot.split(/\s+/).filter(Boolean);
-      const previousWords = previousInterimSnapshot.split(/\s+/).filter(Boolean);
-      const deduplicatedWords = deduplicatedInterimSnapshot.split(/\s+/).filter(Boolean);
-      const isExtension =
-        previousWords.length > 0 &&
-        previousWords.length <= snapshotWords.length &&
-        previousWords.every(
-          (word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(snapshotWords[index]),
-        );
-      if (!isExtension) {
-        previousInterimSnapshot = snapshot;
-        deduplicatedInterimSnapshot = snapshot;
-        return snapshot;
-      }
-      const delta = snapshotWords.slice(previousWords.length);
-      let overlap = Math.min(deduplicatedWords.length, delta.length);
-      while (
-        overlap > 0 &&
-        !deduplicatedWords
-          .slice(-overlap)
-          .every((word, index) => normalizeTranscriptWord(word) === normalizeTranscriptWord(delta[index]))
-      ) {
-        overlap -= 1;
-      }
-      deduplicatedInterimSnapshot = [...deduplicatedWords, ...delta.slice(overlap)].join(" ");
-      previousInterimSnapshot = snapshot;
-      return deduplicatedInterimSnapshot;
-    };
-    const cleanedInterimText = interimText ? deduplicateCumulativeInterim(interimText) : "";
-    if (!interimText && finalText && event.results.length === 1 && previousInterimSnapshot) {
-      finalText = deduplicateCumulativeInterim(finalText);
+    const cleanedInterimText = interimText ? collapseRepeatedTranscriptPhrases(interimText) : "";
+    if (!interimText && finalText && event.results.length === 1) {
+      finalText = collapseRepeatedTranscriptPhrases(finalText);
     }
     // SpeechRecognitionEvent.results is a complete snapshot, not a stream of
     // text deltas. Rebuild the draft from that snapshot on every event so a
