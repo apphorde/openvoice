@@ -11,3 +11,27 @@
 @source "./index.html";
 @source "./app.js";
 @source inline("border-mint hidden ml-auto mr-auto text-[#8090aa] text-[#f3f6fb]");
+
+.chat-mode-layout {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-mode-layout > header {
+  flex-shrink: 0;
+}
+
+.chat-mode-layout > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-mode-layout #conversation {
+  overscroll-behavior: contain;
+}
+
+.chat-mode-layout #keyboardInput {
+  flex-shrink: 0;
+}

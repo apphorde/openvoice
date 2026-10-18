@@ -252,6 +252,49 @@ test("session selection replaces the main area and selecting a session restores 
   await page.screenshot({ path: "/tmp/opencode/openvoice-chat-mobile.png", fullPage: true });
 });
 
+test("chat mode scrolls messages without moving the header or composer", async ({ page }) => {
+  const messages = Array.from({ length: 36 }, (_, index) => ({
+    id: `scroll-${index}`,
+    role: index % 2 ? "user" : "assistant",
+    text: `Message ${index}: ${"A long conversation line for scroll testing. ".repeat(5)}`,
+  }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, { messages: { a: messages } });
+  await page.getByRole("button", { name: "Open chat history" }).click();
+  const conversation = page.locator("#conversation");
+  await expect(conversation).toBeVisible();
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1280, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const before = await page.evaluate(() => ({
+      pageHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+      headerTop: document.querySelector("header").getBoundingClientRect().top,
+      composerTop: document.querySelector("#keyboardInput").getBoundingClientRect().top,
+      conversationHeight: document.querySelector("#conversation").clientHeight,
+      messageHeight: document.querySelector("#conversation").scrollHeight,
+    }));
+    expect(before.pageHeight).toBeLessThanOrEqual(before.viewportHeight + 1);
+    expect(before.messageHeight).toBeGreaterThan(before.conversationHeight);
+
+    await conversation.evaluate((element) => {
+      element.scrollTop = 200;
+    });
+    await expect.poll(() => conversation.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    const after = await page.evaluate(() => ({
+      headerTop: document.querySelector("header").getBoundingClientRect().top,
+      composerTop: document.querySelector("#keyboardInput").getBoundingClientRect().top,
+      pageScroll: window.scrollY,
+    }));
+    expect(after.headerTop).toBe(before.headerTop);
+    expect(after.composerTop).toBe(before.composerTop);
+    expect(after.pageScroll).toBe(0);
+  }
+});
+
 test("Li3 session and goal templates support create, status, delete, and plan actions", async ({ page }) => {
   const { sessions, goals } = await setup(page);
   await page.locator("#sessionTitle").click();
