@@ -225,6 +225,25 @@ function collapseRepeatedTranscriptPhrases(transcript) {
   return words.join(" ");
 }
 
+function isCumulativeTranscriptSequence(transcripts) {
+  if (transcripts.length < 3) {
+    return false;
+  }
+  let previous = transcripts[0];
+  let extensions = 0;
+  for (const transcript of transcripts.slice(1)) {
+    const delta = transcriptAfterExistingText(transcript, previous);
+    if (delta === null) {
+      return false;
+    }
+    if (delta) {
+      extensions += 1;
+      previous = transcript;
+    }
+  }
+  return extensions >= 2;
+}
+
 function showDraft() {
   clearTimeout(sendTimer);
   clearTimeout(reviewTimer);
@@ -705,9 +724,11 @@ function startRecognition() {
         interimText = text;
       }
     }
-    let finalText = finalTranscript.join(" ").trim();
+    let finalText = isCumulativeTranscriptSequence(finalTranscript)
+      ? collapseRepeatedTranscriptPhrases(finalTranscript.join(" "))
+      : finalTranscript.join(" ").trim();
     const cleanedInterimText = interimText ? collapseRepeatedTranscriptPhrases(interimText) : "";
-    if (!interimText && finalText && event.results.length === 1) {
+    if (!interimText && finalText && event.results.length === 1 && finalTranscript.length === 1) {
       finalText = collapseRepeatedTranscriptPhrases(finalText);
     }
     // SpeechRecognitionEvent.results is a complete snapshot, not a stream of

@@ -639,6 +639,31 @@ test("repeated growing phrase echoes collapse inside one interim snapshot", asyn
   expect(sent).toEqual([]);
 });
 
+test("cumulative final result slots use the latest transcript instead of concatenating snapshots", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  const snapshots = [
+    "this",
+    "this is",
+    "this is",
+    "this is",
+    "this is a",
+    "this is a test",
+    "this is a test on",
+    "this is a test on the",
+    "this is a test on the latest",
+    "this is a test on the latest",
+    "this is a test on the latest version",
+    "this is a test on the latest version of",
+    "this is a test on the latest version of the",
+    "this is a test on the latest version of the interface",
+    "this is a test on the latest version of the interface",
+  ];
+  await page.evaluate((texts) => window.emitSegments(texts.map((text) => ({ text }))), snapshots);
+  await expect(page.locator("#transcriptPreview")).toHaveText("this is a test on the latest version of the interface");
+});
+
 test("an interim result containing finalized text is not joined to itself", async ({ page }) => {
   await setup(page);
   await page.getByRole("button", { name: "Start hands-free" }).click();
