@@ -105,6 +105,15 @@
               Goals are stored centrally. Share them with sessions only when you choose.
             </p>
             <button
+              id="applyPlanToCurrentSession"
+              class="my-2 min-h-10 rounded-lg bg-[#5277e8] px-3 text-sm hover:bg-[#6488f5] disabled:opacity-50"
+              type="button"
+              bind-disabled.bool="!selectedId"
+              on-click="applyPlanToCurrentSession()"
+            >
+              Send goals to current session
+            </button>
+            <button
               id="applyPlan"
               class="my-2 min-h-10 rounded-lg border border-[#25324a] px-3 text-sm hover:bg-[#16233a]"
               type="button"

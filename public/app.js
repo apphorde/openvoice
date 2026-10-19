@@ -101,6 +101,7 @@ const app = mount(document.querySelector("#app-root"), {
     setGoalDescription,
     addGoal,
     applyPlan,
+    applyPlanToCurrentSession,
     updateGoal,
     deleteGoal,
     sendDraft,
@@ -971,6 +972,18 @@ async function applyPlan() {
   if (!sessionIds.length || !confirm(`Send the current plan to all ${sessionIds.length} top-level sessions?`)) {
     return;
   }
+  await sendPlan(sessionIds);
+}
+
+async function applyPlanToCurrentSession() {
+  const session = sessions.find((item) => item.id === selected);
+  if (!session || !confirm(`Send current open goals to "${session.title}"?`)) {
+    return;
+  }
+  await sendPlan([session.id]);
+}
+
+async function sendPlan(sessionIds) {
   try {
     const { data } = await request("/api/plan/send", {
       method: "POST",

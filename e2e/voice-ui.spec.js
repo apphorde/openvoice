@@ -13,6 +13,7 @@ async function setup(page, options = {}) {
   ];
   const messages = Object.fromEntries(sessions.map(({ id }) => [id, options.messages?.[id] || []]));
   const goals = [];
+  const plans = [];
   const sent = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -110,7 +111,10 @@ async function setup(page, options = {}) {
     }
     return r.fulfill({ status: 404, json: { error: "Not found" } });
   });
-  await page.route("**/api/plan/send", (r) => r.fulfill({ json: { sent: 2, failed: 0 } }));
+  await page.route("**/api/plan/send", (r) => {
+    plans.push(r.request().postDataJSON());
+    return r.fulfill({ json: { sent: r.request().postDataJSON().sessionIds.length, failed: 0 } });
+  });
   await page.route("**/api/tts", async (r) => {
     if (options.onTts) {
       return options.onTts(r);
@@ -119,7 +123,7 @@ async function setup(page, options = {}) {
   });
   await page.goto("/");
   await expect(page.locator("#sessionTitle")).toHaveText(sessions[0].title);
-  return { sent, messages, errors, sessions, goals };
+  return { sent, messages, errors, sessions, goals, plans };
 }
 
 test("Chrome voice confirmation flow takes two explicit turns and never auto-sends", async ({ page }) => {
@@ -296,7 +300,7 @@ test("chat mode scrolls messages without moving the header or composer", async (
 });
 
 test("Li3 session and goal templates support create, status, delete, and plan actions", async ({ page }) => {
-  const { sessions, goals } = await setup(page);
+  const { sessions, goals, plans } = await setup(page);
   await page.locator("#sessionTitle").click();
   await page.getByRole("button", { name: "Start new session" }).click();
   await expect(page.locator("#sessionTitle")).toHaveText("New session");
@@ -306,13 +310,18 @@ test("Li3 session and goal templates support create, status, delete, and plan ac
   await page.getByLabel("Success criteria").fill("Reactive goal management works");
   await page.getByRole("button", { name: "Add goal" }).click();
   await expect(page.getByText("Li3 migration goal — Reactive goal management works")).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Send goals to current session" }).click();
+  await expect(page.locator("#goalNotice")).toHaveText("Sent to 1; 0 failed.");
+  expect(plans.at(-1).sessionIds).toEqual(["new-2"]);
   await page.getByRole("combobox", { name: "Goal status" }).selectOption("in-progress");
   await expect.poll(() => goals[0]?.status).toBe("in-progress");
   await page.getByRole("button", { name: "Delete Li3 migration goal" }).click();
   await expect(page.getByText("Li3 migration goal — Reactive goal management works")).toBeHidden();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Send plan to all top-level sessions" }).click();
-  await expect(page.locator("#goalNotice")).toHaveText("Sent to 2; 0 failed.");
+  await expect(page.locator("#goalNotice")).toHaveText("Sent to 3; 0 failed.");
+  expect(plans.at(-1).sessionIds).toEqual(sessions.map((session) => session.id));
   expect(sessions).toHaveLength(3);
   expect(goals).toHaveLength(0);
 });
