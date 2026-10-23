@@ -14,6 +14,7 @@ async function setup(page, options = {}) {
   const messages = Object.fromEntries(sessions.map(({ id }) => [id, options.messages?.[id] || []]));
   const goals = [];
   const plans = [];
+  const ttsRequests = [];
   const sent = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -116,6 +117,7 @@ async function setup(page, options = {}) {
     return r.fulfill({ json: { sent: r.request().postDataJSON().sessionIds.length, failed: 0 } });
   });
   await page.route("**/api/tts", async (r) => {
+    ttsRequests.push(r.request().postDataJSON());
     if (options.onTts) {
       return options.onTts(r);
     }
@@ -123,7 +125,7 @@ async function setup(page, options = {}) {
   });
   await page.goto("/");
   await expect(page.locator("#sessionTitle")).toHaveText(sessions[0].title);
-  return { sent, messages, errors, sessions, goals, plans };
+  return { sent, messages, errors, sessions, goals, plans, ttsRequests };
 }
 
 test("Chrome voice confirmation flow takes two explicit turns and never auto-sends", async ({ page }) => {
@@ -182,6 +184,7 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
 test("voice-first mode can switch to full conversation and back", async ({ page }) => {
   await setup(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("#readLastMessage")).toBeDisabled();
   await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
   await expect(page.locator("#voiceStatus")).not.toContainText(/Microphone off.*tap to start/i);
   await expect(page.getByText("Tap the microphone and speak")).toHaveCount(0);
@@ -202,6 +205,43 @@ test("voice-first mode can switch to full conversation and back", async ({ page 
   await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
   await expect(page.getByText("Tap the microphone and speak")).toHaveCount(0);
   await expect(page.locator("svg")).toHaveCount(1);
+});
+
+test("voice screen can read the latest assistant reply aloud without enabling the microphone", async ({ page }) => {
+  const { sent, ttsRequests } = await setup(page, {
+    messages: {
+      a: [
+        { id: "old", role: "assistant", text: "An older reply", completed: true },
+        { id: "latest", role: "assistant", text: "The latest reply", completed: true },
+      ],
+    },
+  });
+  const readButton = page.locator("#readLastMessage");
+  await expect(readButton).toBeEnabled();
+  await readButton.click();
+  await expect.poll(() => ttsRequests.length).toBe(1);
+  expect(ttsRequests).toEqual([{ text: "The latest reply" }]);
+  await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => page.evaluate(() => window.plays || 0)).toBe(1);
+  await expect(readButton).toHaveText("Read last reply");
+  expect(sent).toEqual([]);
+});
+
+test("reading the latest reply during hands-free pauses dictation then resumes it", async ({ page }) => {
+  const { ttsRequests } = await setup(page, {
+    messages: {
+      a: [{ id: "latest", role: "assistant", text: "Read this reply", completed: true }],
+    },
+  });
+  await page.getByRole("button", { name: "Start hands-free" }).click();
+  await page.evaluate(() => window.emitRecognitionStart());
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  await page.getByRole("button", { name: "Read last reply" }).click();
+  await expect.poll(() => ttsRequests.length).toBe(1);
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
+  await page.evaluate(() => window.emitRecognitionStart());
+  await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
+  expect(await page.evaluate(() => window.recognizers.at(-1).starts)).toBeGreaterThan(0);
 });
 
 test("session selection keeps executive goals available", async ({ page }) => {

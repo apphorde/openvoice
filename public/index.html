@@ -275,6 +275,15 @@
               </div>
             </div>
             <button
+              id="readLastMessage"
+              class="mb-3 min-h-10 rounded-full border border-[#53627d] px-4 text-sm text-[#c7d3e5] hover:bg-[#16233a] disabled:opacity-50"
+              type="button"
+              bind-disabled.bool="readLastMessageDisabled"
+              on-click="readLastMessage()"
+            >
+              {{ readLastMessageLabel }}
+            </button>
+            <button
               id="voice"
               class="mt-auto mb-2 flex size-16 shrink-0 items-center justify-center rounded-full border border-[#53627d] bg-[#25324a] text-[#9eabc1] transition hover:bg-[#344563] active:scale-[.97] focus-visible:outline-2 focus-visible:outline-white aria-pressed:bg-[#5277e8] aria-pressed:text-white data-[state=listening]:animate-pulse data-[state=listening]:bg-[#7595ff] data-[state=speaking]:bg-[#b7cde6] data-[state=speaking]:text-[#15202d]"
               type="button"

@@ -30,6 +30,8 @@ const view = {
   sendDraftDisabled: ref(true),
   resumeDisabled: ref(false),
   discardDisabled: ref(false),
+  readLastMessageDisabled: ref(true),
+  readLastMessageLabel: ref("Read last reply"),
 };
 
 let sessions = [];
@@ -105,6 +107,7 @@ const app = mount(document.querySelector("#app-root"), {
     updateGoal,
     deleteGoal,
     sendDraft,
+    readLastMessage,
     resumeDictation,
     discardDraft,
     toggleVoice,
@@ -166,6 +169,25 @@ function showStatus(text, state) {
   view.resumeDisabled.value = sending || waitingForReply || speaking;
   view.discardDisabled.value = sending;
   view.sendDisabled.value = sending || waitingForReply || speaking;
+  updateReadLastMessageControl();
+}
+
+function latestSpeakableMessage() {
+  return [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "assistant" &&
+        message.text?.trim() &&
+        message.completed !== false &&
+        message.finish !== "tool-calls" &&
+        message.finish !== "error",
+    );
+}
+
+function updateReadLastMessageControl() {
+  view.readLastMessageLabel.value = speaking ? "Stop reading" : "Read last reply";
+  view.readLastMessageDisabled.value = !speaking && (!latestSpeakableMessage() || sending || waitingForReply);
 }
 
 async function checkAuthAndProperties() {
@@ -357,6 +379,7 @@ function renderMarkdown(text) {
 function renderMessages() {
   const signature = JSON.stringify([selected, messages]);
   if (signature === messageSignature) {
+    updateReadLastMessageControl();
     return;
   }
   messageSignature = signature;
@@ -368,6 +391,7 @@ function renderMessages() {
     html: renderMarkdown(message.text),
     timeLabel: messageDate(message.time),
   }));
+  updateReadLastMessageControl();
   void nextTick().then(() => {
     if (nearBottom) {
       conversation.scrollTop = conversation.scrollHeight;
@@ -491,6 +515,7 @@ function splitForSpeech(text, maxLength = 900) {
 async function speak(text) {
   const generation = voiceGeneration;
   const chunks = splitForSpeech(text);
+  let playbackError = "";
   if (chunks.length === 0) {
     return;
   }
@@ -499,7 +524,7 @@ async function speak(text) {
   showStatus("Speaking…");
   try {
     for (const chunk of chunks) {
-      if (!voiceMode || generation !== voiceGeneration) {
+      if (generation !== voiceGeneration) {
         break;
       }
       const { response } = await request("/api/tts", {
@@ -507,11 +532,11 @@ async function speak(text) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: chunk }),
       });
-      if (!voiceMode || generation !== voiceGeneration) {
+      if (generation !== voiceGeneration) {
         return;
       }
       const source = URL.createObjectURL(await response.blob());
-      if (!voiceMode || generation !== voiceGeneration) {
+      if (generation !== voiceGeneration) {
         URL.revokeObjectURL(source);
         return;
       }
@@ -537,13 +562,17 @@ async function speak(text) {
       } finally {
         URL.revokeObjectURL(source);
       }
-      if (!voiceMode || generation !== voiceGeneration) {
+      if (generation !== voiceGeneration) {
         return;
       }
     }
   } catch (error) {
     if (generation === voiceGeneration) {
-      stopVoice(`Could not play reply: ${error.message}`, { error: true });
+      if (voiceMode) {
+        stopVoice(`Could not play reply: ${error.message}`, { error: true });
+      } else {
+        playbackError = `Could not play reply: ${error.message}`;
+      }
     }
   } finally {
     if (generation === voiceGeneration) {
@@ -551,8 +580,32 @@ async function speak(text) {
       if (voiceMode) {
         showStatus("Your turn — speak when ready");
         startRecognition();
+      } else {
+        showStatus(playbackError || "Playback finished", playbackError ? "error" : undefined);
       }
     }
+  }
+}
+
+function readLastMessage() {
+  if (speaking) {
+    voiceGeneration++;
+    activePlaybackCancel?.();
+    activePlaybackCancel = null;
+    player.pause();
+    player.removeAttribute("src");
+    speaking = false;
+    if (voiceMode) {
+      showStatus("Your turn — speak when ready");
+      startRecognition();
+    } else {
+      showStatus("Reading stopped");
+    }
+    return;
+  }
+  const latest = latestSpeakableMessage();
+  if (latest) {
+    void speak(latest.text);
   }
 }
 
