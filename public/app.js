@@ -95,6 +95,7 @@ const app = mount(document.querySelector("#app-root"), {
     ...view,
     openSessionSelection,
     closeSessionSelection,
+    toggleSessionSidebar,
     toggleChat,
     refreshSessions,
     startNewSession,
@@ -370,6 +371,10 @@ function openSessionSelection() {
 
 function closeSessionSelection() {
   view.sessionSelectionOpen.value = false;
+}
+
+function toggleSessionSidebar() {
+  view.sessionSelectionOpen.value = !view.sessionSelectionOpen.value;
 }
 
 function renderMarkdown(text) {

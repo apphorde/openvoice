@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0e0c" />
+    <meta name="theme-color" content="#0b1220" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="stylesheet" href="/app.css" />
     <title>OpenVoice</title>
@@ -11,9 +11,22 @@
   <body class="min-h-dvh min-w-[320px] bg-[#080f20] font-sans text-[#f3f6fb]">
     <div id="app-root"></div>
     <template id="app-template">
-      <main class="mx-auto flex min-h-dvh w-full flex-col px-2 py-2 sm:px-4 sm:py-3" class-chat-mode-layout="chatMode">
-        <header class="grid min-h-12 grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <span></span>
+      <main
+        id="workspace"
+        class="app-shell chat-mode-layout mx-auto flex min-h-dvh w-full flex-col px-2 py-2 sm:px-4 sm:py-3"
+      >
+        <header class="app-toolbar grid min-h-12 grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <button
+            id="sidebarToggle"
+            type="button"
+            class="sidebar-toggle justify-self-start rounded-lg border border-[#28364b] px-3 py-2 text-sm text-[#a7b7cb] hover:bg-[#17243a]"
+            aria-label="Toggle session sidebar"
+            aria-controls="sessionSelection"
+            attr-aria-expanded="String(sessionSelectionOpen)"
+            on-click="toggleSessionSidebar()"
+          >
+            ☰ <span class="hidden sm:inline">Sessions</span>
+          </button>
           <button
             id="sessionTitle"
             type="button"
@@ -47,11 +60,18 @@
             </form>
           </div>
         </header>
+        <button
+          id="sidebarBackdrop"
+          class="sidebar-backdrop"
+          type="button"
+          aria-label="Close session sidebar"
+          bind-hidden.bool="!sessionSelectionOpen"
+          on-click="closeSessionSelection()"
+        ></button>
         <section
           id="sessionSelection"
-          class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto py-2"
-          class-hidden="!sessionSelectionOpen"
-          bind-hidden.bool="!sessionSelectionOpen"
+          class="session-sidebar flex min-h-0 flex-col gap-3 overflow-auto py-2"
+          attr-data-open="String(sessionSelectionOpen)"
           aria-label="Select session"
         >
           <div class="flex items-center justify-between border-b border-[#25324a] pb-2">
@@ -175,17 +195,13 @@
             </div>
           </details>
         </section>
-        <div
-          class="flex min-h-0 flex-1 flex-col"
-          class-hidden="sessionSelectionOpen"
-          bind-hidden.bool="sessionSelectionOpen"
-        >
+        <div class="conversation-workspace flex min-h-0 flex-1 flex-col">
           <section
             id="conversation"
             class="chat-history my-1 min-h-0 flex-1 flex-col gap-2 overflow-auto rounded-xl border border-[#202c43] bg-[#0d1729] p-2"
             class-flex="chatMode"
-            class-hidden="!chatMode || sessionSelectionOpen"
-            bind-hidden.bool="!chatMode || sessionSelectionOpen"
+            class-hidden="!chatMode"
+            bind-hidden.bool="!chatMode"
             aria-live="polite"
             aria-label="Conversation"
           >
@@ -214,8 +230,8 @@
 
           <section
             class="voice-screen flex flex-1 flex-col items-center py-2 text-center"
-            class-hidden="chatMode || sessionSelectionOpen"
-            bind-hidden.bool="chatMode || sessionSelectionOpen"
+            class-hidden="chatMode"
+            bind-hidden.bool="chatMode"
             aria-label="Voice controls"
           >
             <p id="voiceStatus" class="sr-only" attr-data-state="voiceState" aria-live="polite">{{ statusText }}</p>
@@ -311,11 +327,7 @@
             <p class="sr-only">Tap to listen. After a pause, review and edit your draft before sending.</p>
           </section>
 
-          <section
-            id="keyboardInput"
-            class="w-full border-t border-[#202c43] py-2"
-            bind-hidden.bool="!chatMode || sessionSelectionOpen"
-          >
+          <section id="keyboardInput" class="w-full border-t border-[#202c43] py-2" bind-hidden.bool="!chatMode">
             <form id="composer" class="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]" on-submit.prevent="sendTypedPrompt()">
               <textarea
                 class="w-full rounded-xl border border-[#25324a] bg-[#0d1729] p-4 text-[#f3f6fb] placeholder:text-[#71809a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"

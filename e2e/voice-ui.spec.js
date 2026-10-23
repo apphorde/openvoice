@@ -132,7 +132,7 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
   const { sent, errors } = await setup(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(37, 50, 74)");
+  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(20, 40, 62)");
   await expect(page.locator("#voice svg g").nth(0)).toBeVisible();
   await page.getByRole("button", { name: "Start hands-free" }).click();
   await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "true");
@@ -245,6 +245,7 @@ test("reading the latest reply during hands-free pauses dictation then resumes i
 });
 
 test("session selection keeps executive goals available", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await setup(page);
   await expect(page.locator("#goalsPanel")).toBeHidden();
   await page.locator("#sessionTitle").click();
@@ -254,7 +255,9 @@ test("session selection keeps executive goals available", async ({ page }) => {
   await expect(page.locator("#goalForm")).toBeVisible();
 });
 
-test("session selection replaces the main area and selecting a session restores its context", async ({ page }) => {
+test("mobile session sidebar overlays the conversation and selecting a session restores its context", async ({
+  page,
+}) => {
   const { messages } = await setup(page, {
     messages: {
       b: [{ id: "b-message", role: "assistant", text: "Context for project B" }],
@@ -263,11 +266,12 @@ test("session selection replaces the main area and selecting a session restores 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "Choose session: Project A" })).toBeVisible();
   await page.getByRole("button", { name: "Open chat history" }).click();
-  await page.locator("#sessionTitle").click();
+  await page.locator("#sidebarToggle").click();
+  await expect(page.locator("#sidebarToggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#sidebarBackdrop")).toBeVisible();
   await expect(page.locator("#sessionSelection")).toBeVisible();
-  await expect(page.locator("#voice")).toBeHidden();
-  await expect(page.locator("#conversation")).toBeHidden();
-  await expect(page.locator("#keyboardInput")).toBeHidden();
+  await expect(page.locator("#conversation")).toBeVisible();
+  await expect(page.locator("#keyboardInput")).toBeVisible();
   await expect(page.getByRole("button", { name: "Refresh sessions" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start new session" })).toBeVisible();
   await expect(page.locator("#list button")).toHaveCount(2);
@@ -280,7 +284,7 @@ test("session selection replaces the main area and selecting a session restores 
   await expect(page.getByText("Context for project B")).toBeVisible();
   await expect(page.locator("#conversation article")).toHaveClass(/mr-auto/);
   await expect(page.locator("#conversation article")).not.toHaveCSS("background-color", "rgb(13, 23, 41)");
-  await expect(page.locator("#conversation article")).not.toHaveCSS("border-top-width", "1px");
+  await expect(page.locator("#conversation article")).toHaveCSS("border-top-width", "1px");
   await expect(page.locator("#conversation article > div")).toHaveCSS("font-size", "14px");
   messages.b.push({ id: "b-user", role: "user", text: "Right aligned" });
   await page.waitForTimeout(2600);
