@@ -13,7 +13,7 @@
     <template id="app-template">
       <main
         id="workspace"
-        class="app-shell chat-mode-layout mx-auto flex min-h-dvh w-full flex-col px-2 py-2 sm:px-4 sm:py-3"
+        class="app-shell conversation-layout mx-auto flex min-h-dvh w-full flex-col px-2 py-2 sm:px-4 sm:py-3"
       >
         <header class="app-toolbar grid min-h-12 grid-cols-[1fr_auto_1fr] items-center gap-3">
           <button
@@ -39,15 +39,31 @@
           <span id="sessionMeta" class="sr-only">{{ sessionMeta }}</span>
           <div class="flex items-center justify-self-end gap-2">
             <span id="user" class="sr-only">{{ authUser }}</span>
+            <p id="voiceStatus" class="sr-only" attr-data-state="voiceState" aria-live="polite">{{ statusText }}</p>
             <button
-              id="modeToggle"
+              id="voice"
+              class="flex min-h-10 items-center gap-2 rounded-full border border-[#53627d] px-3 text-sm"
               type="button"
-              attr-aria-label="chatMode ? 'Back to voice note' : 'Open chat history'"
-              attr-aria-pressed="String(chatMode)"
-              class="rounded-full px-3 py-2 text-sm text-[#9eabc1] hover:bg-[#16233a]"
-              on-click="toggleChat()"
+              attr-data-state="voiceState"
+              attr-aria-pressed="String(voiceMode)"
+              on-click="toggleVoice()"
+              aria-labelledby="voiceLabel"
             >
-              {{ chatMode ? 'Voice' : 'Chat' }}
+              <svg class="size-5" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                <g bind-hidden.bool="voiceMode">
+                  <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
+                  <path
+                    d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                  />
+                </g>
+                <g bind-hidden.bool="!voiceMode">
+                  <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" />
+                </g>
+              </svg>
+              <span id="voiceLabel" class="sr-only">{{ voiceLabel }}</span>
             </button>
             <form method="post" action="/auth/logout">
               <button
@@ -94,7 +110,8 @@
                 ↻
               </button>
               <button
-                class="rounded-lg px-3 text-sm hover:bg-[#1b2941]"
+                id="closeSessionSidebar"
+                class="sidebar-close rounded-lg px-3 text-sm hover:bg-[#1b2941]"
                 aria-label="Close session selection"
                 on-click="closeSessionSelection()"
               >
@@ -198,10 +215,7 @@
         <div class="conversation-workspace flex min-h-0 flex-1 flex-col">
           <section
             id="conversation"
-            class="chat-history my-1 min-h-0 flex-1 flex-col gap-2 overflow-auto rounded-xl border border-[#202c43] bg-[#0d1729] p-2"
-            class-flex="chatMode"
-            class-hidden="!chatMode"
-            bind-hidden.bool="!chatMode"
+            class="chat-history my-1 flex min-h-0 flex-1 flex-col gap-2 overflow-auto rounded-xl border border-[#202c43] bg-[#0d1729] p-2"
             aria-live="polite"
             aria-label="Conversation"
           >
@@ -228,42 +242,24 @@
             </template>
           </section>
 
-          <section
-            class="voice-screen flex flex-1 flex-col items-center py-2 text-center"
-            class-hidden="chatMode"
-            bind-hidden.bool="chatMode"
-            aria-label="Voice controls"
-          >
-            <p id="voiceStatus" class="sr-only" attr-data-state="voiceState" aria-live="polite">{{ statusText }}</p>
-            <p
-              id="transcriptPreview"
-              class="w-full flex-1 overflow-auto whitespace-pre-wrap pt-2 text-left text-base leading-6"
-              class-text-[#8090aa]="!transcriptActive"
-              class-text-[#f3f6fb]="transcriptActive"
-              bind-hidden.bool="draftVisible"
-              attr-aria-live="draftVisible ? 'off' : 'polite'"
-            >
-              {{ transcriptPreview }}
-            </p>
-            <div
-              id="draftPanel"
-              class="my-3 flex w-full max-w-3xl flex-1 flex-col text-left"
-              bind-hidden.bool="!draftVisible"
-            >
-              <label class="sr-only" for="voiceDraft">Review and edit your message</label>
+          <section id="keyboardInput" class="w-full border-t border-[#202c43] py-2">
+            <p id="transcriptPreview" class="sr-only" bind-hidden.bool="draftVisible">{{ transcriptPreview }}</p>
+            <form id="composer" class="mt-3 grid gap-2" on-submit.prevent="sendTypedPrompt()">
               <textarea
-                class="min-h-24 w-full flex-1 resize-none bg-transparent text-left text-base leading-6 text-[#f3f6fb] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
                 id="voiceDraft"
-                rows="3"
+                class="min-h-20 w-full rounded-xl border border-[#25324a] bg-[#0d1729] p-4 text-[#f3f6fb] placeholder:text-[#71809a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
+                aria-label="Review and edit dictated message"
                 aria-describedby="draftHint"
+                placeholder="Review your dictated message before sending…"
+                bind-hidden.bool="!draftVisible"
                 bind-value="draftText"
                 on-input="updateDraft($event.target.value)"
               ></textarea>
-              <p id="draftHint" class="sr-only">{{ draftHint }}</p>
-              <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
+              <p id="draftHint" class="sr-only">Review and edit your dictated message before choosing Send.</p>
+              <div id="draftActions" class="flex flex-wrap items-center gap-2" bind-hidden.bool="!draftVisible">
                 <button
                   id="sendDraft"
-                  class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
+                  class="min-h-10 rounded-full bg-[#5277e8] px-5 font-semibold text-white disabled:opacity-50"
                   type="button"
                   bind-disabled.bool="sendDraftDisabled"
                   on-click="sendDraft()"
@@ -272,8 +268,8 @@
                 </button>
                 <button
                   id="resumeVoice"
+                  class="min-h-10 rounded-full border border-[#25324a] px-4 text-sm hover:bg-[#16233a]"
                   type="button"
-                  class="min-h-10 rounded-lg border border-line px-3 text-sm hover:bg-line disabled:opacity-50"
                   bind-disabled.bool="resumeDisabled"
                   on-click="resumeDictation()"
                 >
@@ -281,72 +277,46 @@
                 </button>
                 <button
                   id="discardDraft"
+                  class="min-h-10 rounded-full border border-[#25324a] px-4 text-sm hover:bg-[#16233a]"
                   type="button"
-                  class="min-h-10 rounded-lg border border-line px-3 text-sm hover:bg-line disabled:opacity-50"
                   bind-disabled.bool="discardDisabled"
                   on-click="discardDraft()"
                 >
                   Discard
                 </button>
               </div>
-            </div>
-            <button
-              id="readLastMessage"
-              class="mb-3 min-h-10 rounded-full border border-[#53627d] px-4 text-sm text-[#c7d3e5] hover:bg-[#16233a] disabled:opacity-50"
-              type="button"
-              bind-disabled.bool="readLastMessageDisabled"
-              on-click="readLastMessage()"
-            >
-              {{ readLastMessageLabel }}
-            </button>
-            <button
-              id="voice"
-              class="mt-auto mb-2 flex size-16 shrink-0 items-center justify-center rounded-full border border-[#53627d] bg-[#25324a] text-[#9eabc1] transition hover:bg-[#344563] active:scale-[.97] focus-visible:outline-2 focus-visible:outline-white aria-pressed:bg-[#5277e8] aria-pressed:text-white data-[state=listening]:animate-pulse data-[state=listening]:bg-[#7595ff] data-[state=speaking]:bg-[#b7cde6] data-[state=speaking]:text-[#15202d]"
-              type="button"
-              attr-data-state="voiceState"
-              attr-aria-pressed="String(voiceMode)"
-              on-click="toggleVoice()"
-              aria-labelledby="voiceLabel"
-            >
-              <svg class="size-6" aria-hidden="true" viewBox="0 0 24 24" fill="none">
-                <g bind-hidden.bool="voiceMode">
-                  <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
-                  <path
-                    d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                  />
-                </g>
-                <g bind-hidden.bool="!voiceMode">
-                  <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" />
-                </g>
-              </svg>
-              <span id="voiceLabel" class="sr-only">{{ voiceLabel }}</span>
-            </button>
-            <p class="sr-only">Tap to listen. After a pause, review and edit your draft before sending.</p>
-          </section>
-
-          <section id="keyboardInput" class="w-full border-t border-[#202c43] py-2" bind-hidden.bool="!chatMode">
-            <form id="composer" class="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]" on-submit.prevent="sendTypedPrompt()">
               <textarea
                 class="w-full rounded-xl border border-[#25324a] bg-[#0d1729] p-4 text-[#f3f6fb] placeholder:text-[#71809a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
                 id="prompt"
-                aria-label="Instruction"
+                aria-label="Message"
                 rows="2"
-                placeholder="Write an instruction…"
+                placeholder="Message…"
+                bind-hidden.bool="draftVisible"
                 bind-value="prompt"
                 on-input="updatePrompt($event.target.value)"
               ></textarea>
               <button
                 id="send"
-                class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
+                class="min-h-10 justify-self-end rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
                 type="submit"
+                bind-hidden.bool="draftVisible"
                 bind-disabled.bool="sendDisabled"
               >
                 Send
               </button>
             </form>
+            <div class="narration-dock mt-2 flex items-center justify-between gap-3">
+              <p class="min-w-0 truncate text-xs text-[#8090aa]">{{ statusText }}</p>
+              <button
+                id="readLastMessage"
+                class="min-h-10 shrink-0 rounded-full border border-[#53627d] px-4 text-sm text-[#c7d3e5] hover:bg-[#16233a] disabled:opacity-50"
+                type="button"
+                bind-disabled.bool="readLastMessageDisabled"
+                on-click="readLastMessage()"
+              >
+                {{ readLastMessageLabel }}
+              </button>
+            </div>
           </section>
         </div>
         <audio id="player" hidden></audio>

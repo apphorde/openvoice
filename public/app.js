@@ -15,7 +15,6 @@ const view = {
   goalTitle: ref(""),
   goalDescription: ref(""),
   messages: ref([]),
-  chatMode: ref(false),
   statusText: ref("Microphone off"),
   voiceState: ref("off"),
   transcriptPreview: ref(""),
@@ -96,7 +95,6 @@ const app = mount(document.querySelector("#app-root"), {
     openSessionSelection,
     closeSessionSelection,
     toggleSessionSidebar,
-    toggleChat,
     refreshSessions,
     startNewSession,
     selectSession,
@@ -359,10 +357,6 @@ function renderSessions() {
   sessionSignature = signature;
   view.sessions.value = sessions;
   view.selectedId.value = selected;
-}
-
-function toggleChat() {
-  view.chatMode.value = !view.chatMode.value;
 }
 
 function openSessionSelection() {

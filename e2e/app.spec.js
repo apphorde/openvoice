@@ -112,8 +112,7 @@ test("OIDC login, authenticated PWA, goals, logout, and protected access", async
   await page.getByRole("button", { name: /Start hands-free/ }).click();
   await expect(page.locator("#transcriptPreview")).toContainText("Check all project goals");
   await page.getByRole("button", { name: /Stop voice/ }).click();
-  await page.getByRole("button", { name: "Open chat history" }).click();
-  await page.getByPlaceholder("Write an instruction…").fill("Please summarize progress");
+  await page.getByPlaceholder("Message…").fill("Please summarize progress");
   await page.locator("#composer").getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator("#voiceStatus")).toContainText("Waiting for the reply");
 

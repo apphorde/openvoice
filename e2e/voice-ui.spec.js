@@ -132,15 +132,15 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
   const { sent, errors } = await setup(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(20, 40, 62)");
+  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(32, 44, 51)");
   await expect(page.locator("#voice svg g").nth(0)).toBeVisible();
   await page.getByRole("button", { name: "Start hands-free" }).click();
   await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(82, 119, 232)");
+  await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(0, 92, 75)");
   await expect(page.locator("#voice svg g").nth(0)).toBeHidden();
   await expect(page.locator("#voice svg g").nth(1)).toBeVisible();
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "starting");
-  const listeningColor = "rgb(117, 149, 255)";
+  const listeningColor = "rgb(0, 168, 132)";
   await expect(page.locator("#voice")).not.toHaveCSS("background-color", listeningColor);
   await page.evaluate(() => window.emitRecognitionStart());
   await expect(page.locator("#voiceStatus")).toHaveAttribute("data-state", "listening");
@@ -181,33 +181,27 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
   expect(errors).toEqual([]);
 });
 
-test("voice-first mode can switch to full conversation and back", async ({ page }) => {
+test("conversation stays visible with voice controls on mobile", async ({ page }) => {
   await setup(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator("#readLastMessage")).toBeDisabled();
   await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
-  await expect(page.locator("#voiceStatus")).not.toContainText(/Microphone off.*tap to start/i);
-  await expect(page.getByText("Tap the microphone and speak")).toHaveCount(0);
   await expect(page.locator("svg")).toHaveCount(1);
-  await expect(page.locator("#conversation")).toBeHidden();
-  await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
+  await expect(page.locator("#conversation")).toBeVisible();
+  await expect(page.locator("#keyboardInput")).toBeVisible();
+  await expect(page.locator("#modeToggle")).toHaveCount(0);
   await expect(page.locator("#voice")).toBeInViewport();
+  await expect(page.locator("#readLastMessage")).toBeVisible();
+  expect(
+    await page.locator("#readLastMessage").evaluate((button) => button.getBoundingClientRect().top),
+  ).toBeGreaterThan(await page.locator("#voice").evaluate((button) => button.getBoundingClientRect().top));
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await page.screenshot({ path: "/tmp/opencode/openvoice-voice-mobile.png", fullPage: true });
-  await page.getByRole("button", { name: "Open chat history" }).click();
-  await expect(page.locator("#conversation")).toBeVisible();
   await expect(page.locator("#conversation")).toHaveCSS("display", "flex");
-  await expect(page.getByRole("button", { name: "Back to voice note" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#keyboardInput")).toBeVisible();
   await page.screenshot({ path: "/tmp/opencode/session-voice-chat-mobile.png", fullPage: true });
-  await page.getByRole("button", { name: "Back to voice note" }).click();
-  await expect(page.locator("#conversation")).toBeHidden();
-  await expect(page.locator("#voiceStatus")).toHaveClass(/sr-only/);
-  await expect(page.getByText("Tap the microphone and speak")).toHaveCount(0);
-  await expect(page.locator("svg")).toHaveCount(1);
 });
 
-test("voice screen can read the latest assistant reply aloud without enabling the microphone", async ({ page }) => {
+test("bottom narration control replays the latest reply without enabling the microphone", async ({ page }) => {
   const { sent, ttsRequests } = await setup(page, {
     messages: {
       a: [
@@ -249,7 +243,7 @@ test("session selection keeps executive goals available", async ({ page }) => {
   await setup(page);
   await expect(page.locator("#goalsPanel")).toBeHidden();
   await page.locator("#sessionTitle").click();
-  await expect(page.locator("#conversation")).toBeHidden();
+  await expect(page.locator("#conversation")).toBeVisible();
   await expect(page.locator("#sessionSelection")).toBeVisible();
   await page.getByText(/Executive goals/).click();
   await expect(page.locator("#goalForm")).toBeVisible();
@@ -265,7 +259,6 @@ test("mobile session sidebar overlays the conversation and selecting a session r
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "Choose session: Project A" })).toBeVisible();
-  await page.getByRole("button", { name: "Open chat history" }).click();
   await page.locator("#sidebarToggle").click();
   await expect(page.locator("#sidebarToggle")).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#sidebarBackdrop")).toBeVisible();
@@ -279,6 +272,10 @@ test("mobile session sidebar overlays the conversation and selecting a session r
   await page.getByRole("button", { name: /Project B/ }).click();
   await expect(page.locator("#sessionSelection")).toBeHidden();
   await expect(page.locator("#sessionTitle")).toHaveText("Project B");
+  await expect(page.locator("#conversation")).toBeVisible();
+  await page.reload();
+  await expect(page.locator("#sessionTitle")).toHaveText("Project B");
+  await expect(page.getByText("Context for project B")).toBeVisible();
   await expect(page.locator("#conversation")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await expect(page.getByText("Context for project B")).toBeVisible();
@@ -300,7 +297,7 @@ test("mobile session sidebar overlays the conversation and selecting a session r
   await page.screenshot({ path: "/tmp/opencode/openvoice-chat-mobile.png", fullPage: true });
 });
 
-test("chat mode scrolls messages without moving the header or composer", async ({ page }) => {
+test("combined chat keeps messages scrolling without moving the header or composer", async ({ page }) => {
   const messages = Array.from({ length: 36 }, (_, index) => ({
     id: `scroll-${index}`,
     role: index % 2 ? "user" : "assistant",
@@ -308,7 +305,6 @@ test("chat mode scrolls messages without moving the header or composer", async (
   }));
   await page.setViewportSize({ width: 390, height: 844 });
   await setup(page, { messages: { a: messages } });
-  await page.getByRole("button", { name: "Open chat history" }).click();
   const conversation = page.locator("#conversation");
   await expect(conversation).toBeVisible();
 
@@ -425,7 +421,6 @@ test("typed fallback sends explicitly and failures retain corrected draft withou
   const { sent } = await setup(page, {
     onSend: (route) => route.fulfill({ status: 503, json: { error: "Unavailable" } }),
   });
-  await page.getByRole("button", { name: "Open chat history" }).click();
   await page.locator("#prompt").fill("Typed instruction");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => sent.length).toBe(1);
@@ -585,8 +580,7 @@ test("Li3 bindings run under blob-only script CSP", async ({ page }) => {
   const csp = response.headers()["content-security-policy"];
   expect(csp).toContain("script-src 'self' blob:");
   expect(csp).not.toContain("unsafe-eval");
-  await expect(page.getByRole("button", { name: "Open chat history" })).toBeVisible();
-  await page.getByRole("button", { name: "Open chat history" }).click();
+  await expect(page.locator("#conversation")).toBeVisible();
   await expect(page.locator("#conversation")).toBeVisible();
   expect(consoleErrors.filter((message) => /content security policy|unsafe-eval|blob:/i.test(message))).toEqual([]);
   expect(consoleErrors).toEqual([]);
@@ -641,7 +635,6 @@ test("sanitized Markdown cannot inject active Li3 bindings", async ({ page }) =>
       ],
     },
   });
-  await page.getByRole("button", { name: "Open chat history" }).click();
   const conversation = page.locator("#conversation");
   await expect(conversation.locator("article")).toHaveCount(1);
   await expect(conversation.locator("article > div")).toHaveCSS("font-size", "14px");

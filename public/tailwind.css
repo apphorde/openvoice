@@ -15,39 +15,39 @@
 @source "./app.js";
 @source inline("border-mint hidden ml-auto mr-auto text-[#8090aa] text-[#f3f6fb]");
 
-.chat-mode-layout {
+.conversation-layout {
   height: 100vh;
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
 }
 
-.chat-mode-layout > header {
+.conversation-layout > header {
   flex-shrink: 0;
 }
 
-.chat-mode-layout > div {
+.conversation-layout > div {
   min-height: 0;
   overflow: hidden;
 }
 
-.chat-mode-layout #conversation {
+.conversation-layout #conversation {
   overscroll-behavior: contain;
 }
 
-.chat-mode-layout #keyboardInput {
+.conversation-layout #keyboardInput {
   flex-shrink: 0;
 }
 
 body {
-  background: #0b1220;
+  background: #0b141a;
 }
 .app-shell {
   max-width: 1600px;
 }
 .app-toolbar {
   flex-shrink: 0;
-  border-bottom: 1px solid #1d2a3f;
+  border-bottom: 1px solid #202c33;
   padding-bottom: 0.5rem;
 }
 .app-toolbar #sessionTitle {
@@ -56,7 +56,7 @@ body {
 .session-sidebar {
   width: 290px;
   flex: none;
-  border-right: 1px solid #1d2a3f;
+  border-right: 1px solid #202c33;
   padding: 1rem;
 }
 .sidebar-backdrop {
@@ -65,20 +65,23 @@ body {
 .sidebar-toggle {
   display: none;
 }
+.sidebar-close {
+  display: none;
+}
 .conversation-workspace {
   min-width: 0;
 }
-#workspace.chat-mode-layout {
+#workspace.conversation-layout {
   display: grid;
   grid-template-columns: 290px minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   gap: 0 1.25rem;
 }
-#workspace.chat-mode-layout > header {
+#workspace.conversation-layout > header {
   grid-column: 1 / -1;
 }
 #sessionSelection h2 {
-  color: #e4edf9;
+  color: #e9edef;
 }
 #sessionSelection #list button {
   border: 1px solid transparent;
@@ -86,35 +89,35 @@ body {
   padding: 0.75rem;
 }
 #sessionSelection #list button:hover {
-  background: #142136;
+  background: #202c33;
 }
 #sessionSelection #list button.border-mint {
-  border-color: #416a9b;
-  background: #14263d;
+  border-color: #244f45;
+  background: #182a2a;
 }
 #conversation {
-  border-color: #1d2a3f;
+  border-color: #202c33;
   border-radius: 1rem;
-  background: #0e192a;
+  background: #0b141a;
   padding: clamp(0.75rem, 2vw, 1.5rem);
 }
 #conversation article {
   max-width: min(82%, 52rem);
   margin-bottom: 0.5rem;
   padding: 0.85rem 1rem;
-  border: 1px solid #23334a;
+  border: 1px solid #29363d;
   border-radius: 1rem;
-  background: #121f32;
+  background: #202c33;
 }
 #conversation article.ml-auto {
-  border-color: #2b527c;
-  background: #13283d;
+  border-color: #005c4b;
+  background: #005c4b;
 }
 #conversation article span {
-  color: #86c8ff;
+  color: #70d9c0;
 }
 #keyboardInput {
-  border-color: #1d2a3f;
+  border-color: #202c33;
 }
 #composer {
   margin-top: 0.5rem;
@@ -123,32 +126,51 @@ body {
   min-height: 3.25rem;
   max-height: 9rem;
   resize: vertical;
-  border-color: #2a3a53;
+  border-color: #2a3942;
   border-radius: 1rem;
-  background: #101c2e;
+  background: #202c33;
   padding: 0.85rem 1rem;
+}
+#voiceDraft {
+  border-color: #2a3942;
+  background: #202c33;
 }
 #send,
 #sendDraft {
-  background: #397db8;
+  background: #00a884;
 }
 #send:hover,
 #sendDraft:hover {
-  background: #4893d2;
+  background: #06cf9c;
 }
 #voice {
-  border-color: #355777;
-  color: #9bcfff;
+  border-color: #2a3942;
+  color: #aebac1;
 }
 #voice[data-state="off"] {
-  background: #14283e;
+  background: #202c33;
+}
+#voice[aria-pressed="true"] {
+  background: #005c4b;
+  color: #f7fff9;
+}
+#voice[data-state="listening"] {
+  background: #00a884;
+  box-shadow: 0 0 0 5px rgb(0 168 132 / 18%);
+}
+#voice[data-state="speaking"] {
+  background: #2a3942;
+  color: #d1f4e9;
 }
 
 @media (max-width: 700px) {
   .sidebar-toggle {
     display: block;
   }
-  #workspace.chat-mode-layout {
+  .sidebar-close {
+    display: block;
+  }
+  #workspace.conversation-layout {
     display: flex;
   }
   .session-sidebar {
@@ -157,9 +179,9 @@ body {
     position: fixed;
     z-index: 20;
     inset: 4.25rem auto 0.5rem 0.5rem;
-    border: 1px solid #293a52;
+    border: 1px solid #29363d;
     border-radius: 1rem;
-    background: #0d1829;
+    background: #111b21;
     box-shadow: 0 20px 60px #0009;
   }
   .sidebar-backdrop:not([hidden]) {
