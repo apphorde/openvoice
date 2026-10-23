@@ -133,6 +133,11 @@ test("Chrome voice confirmation flow takes two explicit turns and never auto-sen
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator("#voice")).toHaveCSS("background-color", "rgb(32, 44, 51)");
+  await expect(page.locator("#voice")).toHaveAttribute("type", "button");
+  const voiceButtonBox = await page.locator("#voice").boundingBox();
+  const sendButtonBox = await page.locator("#send").boundingBox();
+  expect(voiceButtonBox.x).toBeLessThan(sendButtonBox.x);
+  expect(Math.abs(voiceButtonBox.y - sendButtonBox.y)).toBeLessThan(2);
   await expect(page.locator("#voice svg g").nth(0)).toBeVisible();
   await page.getByRole("button", { name: "Start hands-free" }).click();
   await expect(page.locator("#voice")).toHaveAttribute("aria-pressed", "true");
@@ -268,6 +273,7 @@ test("mobile session sidebar overlays the conversation and selecting a session r
   await expect(page.getByRole("button", { name: "Refresh sessions" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start new session" })).toBeVisible();
   await expect(page.locator("#list button")).toHaveCount(2);
+  await expect(page.locator("#list .session-avatar")).toHaveCount(2);
   await page.screenshot({ path: "/tmp/opencode/openvoice-sessions-mobile.png", fullPage: true });
   await page.getByRole("button", { name: /Project B/ }).click();
   await expect(page.locator("#sessionSelection")).toBeHidden();

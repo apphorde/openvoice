@@ -40,31 +40,6 @@
           <div class="flex items-center justify-self-end gap-2">
             <span id="user" class="sr-only">{{ authUser }}</span>
             <p id="voiceStatus" class="sr-only" attr-data-state="voiceState" aria-live="polite">{{ statusText }}</p>
-            <button
-              id="voice"
-              class="flex min-h-10 items-center gap-2 rounded-full border border-[#53627d] px-3 text-sm"
-              type="button"
-              attr-data-state="voiceState"
-              attr-aria-pressed="String(voiceMode)"
-              on-click="toggleVoice()"
-              aria-labelledby="voiceLabel"
-            >
-              <svg class="size-5" aria-hidden="true" viewBox="0 0 24 24" fill="none">
-                <g bind-hidden.bool="voiceMode">
-                  <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
-                  <path
-                    d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                  />
-                </g>
-                <g bind-hidden.bool="!voiceMode">
-                  <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" />
-                </g>
-              </svg>
-              <span id="voiceLabel" class="sr-only">{{ voiceLabel }}</span>
-            </button>
             <form method="post" action="/auth/logout">
               <button
                 class="size-9 rounded-full text-[#8090aa] hover:bg-[#16233a]"
@@ -91,7 +66,10 @@
           aria-label="Select session"
         >
           <div class="flex items-center justify-between border-b border-[#25324a] pb-2">
-            <h2 class="text-lg font-semibold">Sessions</h2>
+            <div>
+              <h2 class="text-lg font-semibold">Sessions</h2>
+              <p class="text-xs text-[#86959c]">Your conversations</p>
+            </div>
             <div class="flex gap-1">
               <button
                 id="newSession"
@@ -123,14 +101,21 @@
             <template foreach="session of sessions">
               <button
                 type="button"
-                class="grid w-full gap-1 border-b border-[#25324a] px-2 py-3 text-left hover:bg-[#16233a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
+                class="session-row flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left hover:bg-[#16233a] focus-visible:outline-2 focus-visible:outline-[#7595ff]"
                 class-border-mint="session.id === selectedId"
                 on-click="selectSession(session.id)"
               >
-                <span class="overflow-hidden text-ellipsis whitespace-nowrap">{{ session.title }}</span>
-                <small class="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#8090aa]"
-                  >{{ session.status === 'running' ? 'Working' : session.directory || '' }}</small
-                >
+                <span class="session-avatar" aria-hidden="true">{{ session.title.slice(0, 2).toUpperCase() }}</span>
+                <span class="session-row-copy">
+                  <span class="session-row-heading">
+                    <span class="session-row-title">{{ session.title }}</span>
+                    <time class="session-row-time">{{ session.status === 'running' ? 'Active' : '' }}</time>
+                  </span>
+                  <small class="session-row-preview"
+                    >{{ session.latest ? (session.latestRole === 'user' ? 'You: ' : '') + session.latest :
+                    session.directory || 'No messages yet' }}</small
+                  >
+                </span>
               </button>
             </template>
           </div>
@@ -258,15 +243,6 @@
               <p id="draftHint" class="sr-only">Review and edit your dictated message before choosing Send.</p>
               <div id="draftActions" class="flex flex-wrap items-center gap-2" bind-hidden.bool="!draftVisible">
                 <button
-                  id="sendDraft"
-                  class="min-h-10 rounded-full bg-[#5277e8] px-5 font-semibold text-white disabled:opacity-50"
-                  type="button"
-                  bind-disabled.bool="sendDraftDisabled"
-                  on-click="sendDraft()"
-                >
-                  Send
-                </button>
-                <button
                   id="resumeVoice"
                   class="min-h-10 rounded-full border border-[#25324a] px-4 text-sm hover:bg-[#16233a]"
                   type="button"
@@ -295,15 +271,52 @@
                 bind-value="prompt"
                 on-input="updatePrompt($event.target.value)"
               ></textarea>
-              <button
-                id="send"
-                class="min-h-10 justify-self-end rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
-                type="submit"
-                bind-hidden.bool="draftVisible"
-                bind-disabled.bool="sendDisabled"
-              >
-                Send
-              </button>
+              <div class="composer-actions flex items-center justify-end gap-2">
+                <button
+                  id="voice"
+                  class="flex min-h-10 items-center gap-2 rounded-full border border-[#53627d] px-4 text-sm"
+                  type="button"
+                  attr-data-state="voiceState"
+                  attr-aria-pressed="String(voiceMode)"
+                  on-click="toggleVoice()"
+                  aria-labelledby="voiceLabel"
+                >
+                  <svg class="size-5" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                    <g bind-hidden.bool="voiceMode">
+                      <rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
+                      <path
+                        d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      />
+                    </g>
+                    <g bind-hidden.bool="!voiceMode">
+                      <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" />
+                    </g>
+                  </svg>
+                  <span id="voiceLabel">{{ voiceLabel }}</span>
+                </button>
+                <button
+                  id="send"
+                  class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
+                  type="submit"
+                  bind-hidden.bool="draftVisible"
+                  bind-disabled.bool="sendDisabled"
+                >
+                  Send
+                </button>
+                <button
+                  id="sendDraft"
+                  class="min-h-10 rounded-full bg-[#5277e8] px-6 font-semibold text-white hover:bg-[#6488f5] disabled:opacity-50"
+                  type="button"
+                  bind-hidden.bool="!draftVisible"
+                  bind-disabled.bool="sendDraftDisabled"
+                  on-click="sendDraft()"
+                >
+                  Send
+                </button>
+              </div>
             </form>
             <div class="narration-dock mt-2 flex items-center justify-between gap-3">
               <p class="min-w-0 truncate text-xs text-[#8090aa]">{{ statusText }}</p>

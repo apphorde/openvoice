@@ -95,6 +95,56 @@ body {
   border-color: #244f45;
   background: #182a2a;
 }
+.session-row {
+  min-height: 4.5rem;
+  border-bottom: 1px solid #202c33;
+}
+.session-avatar {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  flex: none;
+  place-items: center;
+  border: 1px solid #2b4944;
+  border-radius: 9999px;
+  background: #19342f;
+  color: #a6e6d5;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.session-row-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 0.25rem;
+}
+.session-row-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.session-row-title,
+.session-row-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-row-title {
+  color: #e9edef;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.session-row-time {
+  flex: none;
+  color: #8fa19d;
+  font-size: 0.65rem;
+}
+.session-row-preview {
+  color: #aebac1;
+  font-size: 0.75rem;
+}
 #conversation {
   border-color: #202c33;
   border-radius: 1rem;
@@ -145,7 +195,8 @@ body {
 }
 #voice {
   border-color: #2a3942;
-  color: #aebac1;
+  color: #d4e1df;
+  background: #202c33;
 }
 #voice[data-state="off"] {
   background: #202c33;
@@ -161,6 +212,9 @@ body {
 #voice[data-state="speaking"] {
   background: #2a3942;
   color: #d1f4e9;
+}
+.composer-actions #voice {
+  border-color: #42514f;
 }
 
 @media (max-width: 700px) {
